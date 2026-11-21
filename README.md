@@ -89,7 +89,8 @@ copy config.example.json config.json
   "port": 8787,
   "lmstudio": {
     "exe": "C:\\Users\\YOURUSER\\AppData\\Local\\Programs\\LM Studio\\LM Studio.exe",
-    "process_name": "LM Studio.exe"
+    "process_name": "LM Studio.exe",
+    "api_port": 4321
   },
   "hibernate": {
     "method": "rundll32",
@@ -105,6 +106,7 @@ copy config.example.json config.json
 | `host` / `port` | Адрес и порт прослушивания. `0.0.0.0` — доступен по LAN. |
 | `lmstudio.exe` | Полный путь к `LM Studio.exe` (Windows). Пусто → будет запущено по имени процесса. |
 | `lmstudio.process_name` | Имя процесса для проверки/остановки: `LM Studio.exe`. |
+| `lmstudio.api_port` | Порт локального API-сервера LM Studio (загруженные модели, `GET /v1/models`). Стандарт LM Studio — 1234; на целевом ПК — 4321. |
 | `hibernate.method` | `rundll32` (`rundll32.exe powrprof.dll,SetSuspendState 0,1,0`) или `shutdown` (`shutdown /h /f`). |
 | `hibernate.delay_s` | Пауза (сек) до гибернации — чтобы HTTP-ответ успел уйти клиенту. |
 | `log_file` | Файл лога команд (рядом с `main.py`). |
@@ -167,14 +169,14 @@ curl -X POST http://<IP_Винды>:8787/command -H "Content-Type: application/j
 | Метод | Путь | Тело | Ответ |
 |---|---|---|---|
 | `GET` | `/` | — | `{"ok": true, "service": "rpcm-server"}` |
-| `GET` | `/status` | — | `{"ok": true, "command": "status", "lmstudio_running": true, "lmstudio_version": "0.3.25", "pc_name": "DESKTOP-ABC123", "os_name": "Windows 11", "uptime_s": 123456}` |
+| `GET` | `/status` | — | `{"ok": true, "command": "status", "lmstudio_running": true, "lmstudio_version": "0.3.25", "lmstudio_model": "qwen2.5-7b-instruct", "pc_name": "DESKTOP-ABC123", "os_name": "Windows 11", "uptime_s": 123456}` |
 | `POST` | `/command` | `{"command": "<имя>"}` | см. ниже |
 
 **Команды** (`POST /command`):
 
 | Команда | Ответ |
 |---|---|
-| `status` | `{"ok": true, "command": "status", "lmstudio_running": bool, "lmstudio_version": str\|null, "pc_name": str, "os_name": str, "uptime_s": int\|null}` — сам ответ подтверждает доступность сервера; `pc_name` — имя ПК (hostname), `os_name` — ОС сервера (напр. «Windows 11»), `uptime_s` — секунд с момента запуска системы; `lmstudio_version` — версия установленной LM Studio (`VersionInfo.ProductVersion` exe, кэшируется сервером до смены mtime файла) — клиент показывает её в заголовке блока «LM Studio»: «LM Studio (v0.3.25)»; при старой версии сервера заголовок остаётся «(запущена)» / «(не запущена)». Аптайм форматируется без секунд («3 ч 14 мин»). |
+| `status` | `{"ok": true, "command": "status", "lmstudio_running": bool, "lmstudio_version": str\|null, "lmstudio_model": str\|null, "pc_name": str, "os_name": str, "uptime_s": int\|null}` — сам ответ подтверждает доступность сервера; `pc_name` — имя ПК (hostname), `os_name` — ОС сервера (напр. «Windows 11»), `uptime_s` — секунд с момента запуска системы; `lmstudio_version` — версия установленной LM Studio (`VersionInfo.ProductVersion` exe, кэшируется сервером до смены mtime файла); `lmstudio_model` — id загруженной модели (локальный API-сервер LM Studio, `GET http://127.0.0.1:<api_port>/v1/models`; `null`, если API не запущен или моделей нет) — клиент показывает оба поля в заголовке блока («LM Studio (v0.3.25, модель: …)»); при старой версии сервера заголовок остаётся «(запущена)» / «(не запущена)». Аптайм форматируется без секунд («3 ч 14 мин»). |
 | `hibernate` | `{"ok": true, "command": "hibernate", "note": "гибернация запущена"}` — ответ уходит, **потом** машина уходит в гибернацию. |
 | `start_lmstudio` | `{"ok": true, "command": "start_lmstudio", "pid": int, "exe": "..."}` |
 | `stop_lmstudio` | `{"ok": true, "command": "stop_lmstudio", "killed": "LM Studio.exe"}` (или `"killed": null` + `note`, если не было запущено) |
@@ -283,7 +285,10 @@ GUI не «зависает». Ошибки показываются в стро
   сервер работает на той же машине, отдельного индикатора «сервер» нет);
 - **LM Studio** — один `status`-запрос к серверу (хост = `pc.ip`)
   (из него заполняется индикатор: 🟢 запущена / 🔴 не запущена, а заголовок
-  блока — версия LM Studio на ПК: «LM Studio (v0.3.25)»).
+  блока — версия LM Studio на ПК и загруженная модель:
+  «LM Studio (v0.3.25, модель: qwen2.5-7b-instruct)»; модель сервер берёт
+  из локального API-сервера LM Studio, `GET /v1/models`, порт — из конфига
+  `lmstudio.api_port`).
   Если сервер недоступен, LM Studio показывается ⚪ «нет данных» —
   без лишнего второго запроса.
 
@@ -322,7 +327,7 @@ python main.py
 **2) Проверка (с macOS/любой машины):**
 ```bash
 curl http://<IP_Винды>:8787/status
-# -> {"ok": true, "command": "status", "lmstudio_running": false, "lmstudio_version": "0.3.25", "pc_name": "DESKTOP-ABC123", "os_name": "Windows 11", "uptime_s": 123456}
+# -> {"ok": true, "command": "status", "lmstudio_running": false, "lmstudio_version": "0.3.25", "lmstudio_model": null, "pc_name": "DESKTOP-ABC123", "os_name": "Windows 11", "uptime_s": 123456}
 ```
 
 **3) Клиент (macOS):**

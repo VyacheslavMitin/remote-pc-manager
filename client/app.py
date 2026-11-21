@@ -16,11 +16,13 @@
 Шестерёнка настроек — в верхнем левом углу (только значок);
 внизу слева — строка состояния автопроверки (вкл/выкл + время следующей
 проверки), внизу справа — «IP: <адрес управляемого ПК>» (из настроек).
-Заголовок блока «LM Studio» — версия LM Studio на целевом ПК:
-«LM Studio (v0.3.25)», если сервер прислал lmstudio_version; при старой
-версии сервера (версия неизвестна) — «LM Studio (запущена)» / «LM Studio
-(не запущена)» (lmstudio_running из status), а если сервер недоступен —
-просто «LM Studio» (не проверено).
+Заголовок блока «LM Studio» — версия LM Studio на целевом ПК и
+загруженная модель: «LM Studio (v0.3.25, модель: qwen2.5-7b-instruct)»,
+если сервер прислал lmstudio_version / lmstudio_model (модель — из
+локального API-сервера LM Studio, GET /v1/models); показывается только
+то, что прислал. При старой версии сервера (неизвестно) — «LM Studio
+(запущена)» / «LM Studio (не запущена)» (lmstudio_running из status),
+а если сервер недоступен — просто «LM Studio» (не проверено).
 """
 from __future__ import annotations
 
@@ -286,16 +288,30 @@ class MainWindow(QMainWindow):
             parts.append(_format_uptime(uptime_s))
         self.title_pc.setText(f"ПК ({', '.join(parts)})")
 
-    def _set_lm_title(self, running: bool | None, version: str | None = None) -> None:
-        """Заголовок блока «LM Studio»: версия LM Studio на целевом ПК —
-        «LM Studio (v0.3.25)» (lmstudio_version из status). Если версия
-        неизвестна (старый сервер) — «(запущена)» / «(не запущена)» по
-        lmstudio_running; сервер недоступен и версии нет — просто «LM Studio»."""
-        version = (version or "").strip()
-        if version:
-            if not version.lower().startswith("v"):
-                version = f"v{version}"
-            self.title_lm.setText(f"LM Studio ({version})")
+    def _set_lm_title(
+        self,
+        running: bool | None,
+        version: str | None = None,
+        model: str | None = None,
+    ) -> None:
+        """Заголовок блока «LM Studio» — версия и загруженная модель на ПК:
+
+        «LM Studio (v0.3.25, модель: qwen2.5-7b-instruct)», если сервер
+        прислал lmstudio_version / lmstudio_model; только то, что прислал
+        (версия без модели, модель без версии). Если ничего неизвестно
+        (старый сервер) — «(запущена)» / «(не запущена)» по
+        lmstudio_running; сервер недоступен — просто «LM Studio»."""
+        parts: list[str] = []
+        v = (version or "").strip()
+        if v:
+            if not v.lower().startswith("v"):
+                v = f"v{v}"
+            parts.append(v)
+        m = (model or "").strip()
+        if m:
+            parts.append(f"модель: {m}")
+        if parts:
+            self.title_lm.setText(f"LM Studio ({', '.join(parts)})")
             return
         if running is None:
             self.title_lm.setText("LM Studio")
@@ -375,9 +391,11 @@ class MainWindow(QMainWindow):
             running = bool(res["lmstudio_running"])
             self.row_lm.set_state(running, "запущена" if running else "не запущена")
             self._last["lm"] = running
-            self._set_lm_title(running, res.get("lmstudio_version"))
+            self._set_lm_title(running, res.get("lmstudio_version"),
+                               res.get("lmstudio_model"))
         else:
-            self._set_lm_title(None, res.get("lmstudio_version"))
+            self._set_lm_title(None, res.get("lmstudio_version"),
+                               res.get("lmstudio_model"))
         self._set_pc_title(
             res.get("pc_name"), res.get("os_name"), res.get("uptime_s")
         )
@@ -454,7 +472,8 @@ class MainWindow(QMainWindow):
             running = bool(res.get("lmstudio_running"))
             self.row_lm.set_state(running, "запущена" if running else "не запущена")
             self._last["lm"] = running
-            self._set_lm_title(running, res.get("lmstudio_version"))
+            self._set_lm_title(running, res.get("lmstudio_version"),
+                               res.get("lmstudio_model"))
             self._set_pc_title(
             res.get("pc_name"), res.get("os_name"), res.get("uptime_s")
         )
@@ -518,7 +537,8 @@ class MainWindow(QMainWindow):
                 bool(res.get("lmstudio_running")),
                 "запущена" if res.get("lmstudio_running") else "не запущена")
             self._set_lm_title(bool(res.get("lmstudio_running")),
-                               res.get("lmstudio_version"))
+                               res.get("lmstudio_version"),
+                               res.get("lmstudio_model"))
             self._set_pc_title(
             res.get("pc_name"), res.get("os_name"), res.get("uptime_s")
         )

@@ -3,6 +3,7 @@
 Поддерживаемые команды (тело POST /command: {"command": "<имя>"}):
     status           {"ok": true, "command": "status", "lmstudio_running": bool,
                       "lmstudio_version": "<версия из VersionInfo exe, или null>",
+                      "lmstudio_model": "<id загруженной модели (API, /v1/models), или null>",
                       "pc_name": "<имя ПК (hostname)>",
                       "os_name": "<ОС сервера, напр. «Windows 11»>",
                       "uptime_s": <секунд с момента запуска системы, int|null>}
@@ -78,6 +79,7 @@ def run(command: str, cfg: Config) -> dict:
             "command": "status",
             "lmstudio_running": lmstudio.is_running(cfg.lm_process),
             "lmstudio_version": lmstudio.version(cfg.lm_exe),
+            "lmstudio_model": lmstudio.loaded_model(cfg.lm_api_port),
             "pc_name": socket.gethostname(),
             "os_name": _os_name(),
             "uptime_s": _uptime_seconds(),

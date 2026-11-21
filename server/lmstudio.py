@@ -13,17 +13,23 @@ macOS/Linux (для разработки/тестов):
                 затем SIGKILL, если не завершилось за отведённое время.
     version  -> None (только Windows: версия — из VersionInfo exe-файла)
 
+любая ОС:
+    model    -> GET http://127.0.0.1:<api_port>/v1/models — id загруженной
+                модели (локальный API-сервер LM Studio)
+
 Остановка всегда «мягкая» сначала: приложение успевает сохранить состояние,
 принудительное убийство — только как fallback.
 """
 from __future__ import annotations
 
+import json
 import os
 import platform
 import re
 import shutil
 import subprocess
 import time
+import urllib.request
 
 # Сколько секунд давать приложению на аккуратное завершение.
 GRACEFUL_TIMEOUT_S = 8.0
@@ -149,6 +155,47 @@ def version(exe: str = "") -> str | None:
         return out
     _version_fail_at = time.monotonic()
     return None
+
+
+# Максимальная длина id модели в заголовке (длинные GGUF-имена не должны
+# раздвигать окно клиента).
+_MODEL_ID_MAX = 48
+
+
+def loaded_model(port: int = 4321) -> str | None:
+    """ID загруженной в LM Studio модели через локальный API-сервер.
+
+    GET http://127.0.0.1:<port>/v1/models (OpenAI-совместимый ответ:
+    {"data": [{"id": "..."}, ...]}). Несколько загруженных моделей —
+    первый id + «(+N)». None — API-сервер не запущен, порт закрыт,
+    ответ не распознан или моделей нет (всё это нормально: LM Studio
+    может работать без включённого API).
+    Запрос быстрый локальный, кэшировать не нужно (состав моделей
+    меняется динамически, клиент опрашивает status каждые 10 с).
+    """
+    try:
+        port = int(port)
+    except (TypeError, ValueError):
+        return None
+    url = f"http://127.0.0.1:{port}/v1/models"
+    try:
+        with urllib.request.urlopen(url, timeout=3) as resp:
+            body = json.loads(resp.read().decode("utf-8", "replace"))
+    except Exception:
+        return None
+    data = body.get("data") if isinstance(body, dict) else None
+    if not isinstance(data, list):
+        return None
+    ids = [str(m["id"]).strip() for m in data
+           if isinstance(m, dict) and str(m.get("id", "")).strip()]
+    if not ids:
+        return None
+    first = ids[0]
+    if len(first) > _MODEL_ID_MAX:
+        first = first[:_MODEL_ID_MAX] + "…"
+    if len(ids) > 1:
+        first += f" (+{len(ids) - 1})"
+    return first
 
 
 def start(exe: str) -> dict:
