@@ -19,7 +19,7 @@ def request(host: str, port: int, command: str, timeout: float = 5.0) -> dict:
     """Выполняет команду на сервере и возвращает распарсенный JSON (ok=true)."""
     host = (host or "").strip()
     if not host:
-        raise ServerError("хост сервера не задан (раздел «Сервер» в настройках)")
+        raise ServerError("IP компьютера не задан (поле «IP компьютера» в настройках)")
     try:
         port = int(port)
     except (TypeError, ValueError):

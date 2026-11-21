@@ -1,9 +1,11 @@
 """Главное окно клиента: кнопки и два независимых индикатора состояния.
 
-Автопроверка: раз в 10 секунд сам опрашивает всё, что проверяется —
-пинг ПК + один status-запрос к серверу (проверяет LM Studio).
-Сервер и ПК — одна машина, поэтому отдельного индикатора «Сервер» нет.
-Можно включить/выключить кнопкой «⏱ Авто».
+Автопроверка: каждые N секунд (N задаётся в настройках, по умолчанию 10)
+сам опрашивает всё, что проверяется — пинг ПК + один status-запрос к серверу
+(проверяет LM Studio). Сервер и ПК — одна машина, поэтому отдельного
+индикатора «Сервер» нет.
+Включение автопроверки и её интервал настраиваются в «⚙ Настройки»;
+быстро вкл/выкл — кнопкой «⏱ Авто».
 """
 from __future__ import annotations
 
@@ -64,15 +66,15 @@ class StatusRow(QWidget):
 
 
 class MainWindow(QMainWindow):
-    AUTO_INTERVAL_MS = 10_000
-
     def __init__(self):
         super().__init__()
         self.cfg = config.load()
         self._workers: list[Worker] = []
 
-        # состояние автопроверки
-        self._auto_enabled = True
+        # автопроверка: включение и интервал — из конфига (настройки)
+        ac = self.cfg.get("auto_check", {})
+        self._auto_enabled = bool(ac.get("enabled", True))
+        self._auto_interval_s = max(1, int(ac.get("interval_s", 10)))
         self._auto_mode = False          # разрешить авто-строке переписывать статус
         self._manual_inflight = 0        # сколько ручных операций сейчас в полёте
         self._last: dict[str, object] = {"pc": None, "lm": None, "t": None}
@@ -90,8 +92,12 @@ class MainWindow(QMainWindow):
         top = QHBoxLayout()
         title = QLabel("Управление удалённым ПК")
         title.setObjectName("title")
-        self.btn_auto = QPushButton("⏱  Авто: вкл")
-        self.btn_auto.setToolTip("Автопроверка состояния раз в 10 секунд")
+        self.btn_auto = QPushButton(
+            "⏱  Авто: вкл" if self._auto_enabled else "⏱  Авто: выкл"
+        )
+        self.btn_auto.setToolTip(
+            f"Автопроверка состояния каждые {self._auto_interval_s} секунд"
+        )
         self.btn_auto.clicked.connect(self._toggle_auto)
         top.addWidget(title)
         top.addStretch(1)
@@ -141,14 +147,14 @@ class MainWindow(QMainWindow):
         self.status.setTextInteractionFlags(Qt.TextSelectableByMouse)
         root.addWidget(self.status)
 
-        # Автопроверка: раз в 10 секунд
+        # Автопроверка: каждые N секунд (N — из настроек)
         self._timer = QTimer(self)
-        self._timer.setInterval(self.AUTO_INTERVAL_MS)
+        self._timer.setInterval(self._auto_interval_ms())
         self._timer.timeout.connect(self._auto_tick)
-        self._timer.start()
-
-        # первая проверка сразу, чтобы не ждать 10 секунд на «⚪»
-        self._auto_tick()
+        if self._auto_enabled:
+            self._timer.start()
+            # первая проверка сразу, чтобы не ждать N секунд на «⚪»
+            self._auto_tick()
 
     # ---------- инфраструктура ----------
     def _run(self, fn, ok=None, fail=None, on_finish=None) -> Worker:
@@ -195,7 +201,19 @@ class MainWindow(QMainWindow):
         self.status.setText(text)
 
     def _server(self):
-        return self.cfg["server"]["host"], self.cfg["server"]["port"]
+        # Сервер = тот же ПК: хост берём из pc.ip
+        return self.cfg["pc"]["ip"], self.cfg["server"]["port"]
+
+    def _auto_interval_ms(self) -> int:
+        return max(1, int(self._auto_interval_s)) * 1000
+
+    def _sync_auto_button(self) -> None:
+        self.btn_auto.setText(
+            "⏱  Авто: вкл" if self._auto_enabled else "⏱  Авто: выкл"
+        )
+        self.btn_auto.setToolTip(
+            f"Автопроверка состояния каждые {self._auto_interval_s} секунд"
+        )
 
     def _begin_manual(self) -> None:
         self._manual_inflight += 1
@@ -263,12 +281,16 @@ class MainWindow(QMainWindow):
 
     def _toggle_auto(self) -> None:
         self._auto_enabled = not self._auto_enabled
-        self.btn_auto.setText("⏱  Авто: вкл" if self._auto_enabled else "⏱  Авто: выкл")
+        ac = self.cfg.setdefault("auto_check", {})
+        ac["enabled"] = self._auto_enabled
+        self._sync_auto_button()
         if self._auto_enabled:
-            self._msg("⏱ Автопроверка включена (каждые 10 секунд).")
+            self._timer.start()
+            self._msg(f"⏱ Автопроверка включена (каждые {self._auto_interval_s} с).")
             self._auto_mode = True
             self._auto_tick()
         else:
+            self._timer.stop()
             self._auto_mode = False
             self._msg("⏱ Автопроверка выключена.")
 
@@ -398,5 +420,17 @@ class MainWindow(QMainWindow):
         if dlg.exec() == SettingsDialog.Accepted:
             self.cfg = dlg.values()
             config.save(self.cfg)
-            self._msg("⚙ Настройки сохранены.")
-            self._auto_tick()  # сразу перепроверить с новыми настройками
+            # переприменить настройки автопроверки (включение + интервал)
+            ac = self.cfg.get("auto_check", {})
+            self._auto_enabled = bool(ac.get("enabled", True))
+            self._auto_interval_s = max(1, int(ac.get("interval_s", 10)))
+            self._sync_auto_button()
+            self._timer.setInterval(self._auto_interval_ms())
+            if self._auto_enabled:
+                self._timer.start()
+                self._auto_tick()  # сразу перепроверить с новыми настройками
+                self._msg("⚙ Настройки сохранены.")
+            else:
+                self._timer.stop()
+                self._auto_mode = False
+                self._msg("⚙ Настройки сохранены (автопроверка выкл).")

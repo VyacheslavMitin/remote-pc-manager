@@ -1,10 +1,11 @@
 """Конфигурация клиента (хранится в JSON рядом с приложением).
 
 Поля:
-    pc.ip          — IP удалённого ПК (для пинга)
-    pc.mac         — MAC удалённого ПК (для Wake-on-LAN)
-    server.host    — хост/IP сервера на Windows
-    server.port    — порт HTTP-сервера
+    pc.ip             — IP удалённого ПК (для пинга И для сервера — это одна машина)
+    pc.mac            — MAC удалённого ПК (для Wake-on-LAN)
+    server.port       — порт HTTP-сервера (хост сервера = pc.ip)
+    auto_check.enabled    — автопроверка состояния: вкл/выкл
+    auto_check.interval_s — интервал автопроверки, в секундах
 """
 from __future__ import annotations
 
@@ -20,8 +21,11 @@ DEFAULTS = {
         "mac": "AA:BB:CC:DD:EE:FF",
     },
     "server": {
-        "host": "192.168.1.100",
         "port": 8787,
+    },
+    "auto_check": {
+        "enabled": True,
+        "interval_s": 10,
     },
 }
 
