@@ -1,0 +1,303 @@
+# Удалённый ПК — менеджер (клиент + сервер)
+
+Кроссплатформенный менеджер удалённого ПК:
+
+- **Клиент** — GUI на **PySide6**, тёмная тема. Работает на **macOS / Windows 11 / Linux**
+  (основной сценарий — запуск на macOS).
+- **Сервер** — фоновый HTTP-сервер на **Windows 11** (только стандартная библиотека Python),
+  который выполняет команды: статус, гибернация, включение/выключение LM Studio.
+
+Связь — по локальной сети (LAN), **без авторизации**. Клиент (macOS) → сервер (Windows).
+
+```
+┌────────────────────────┐   HTTP (LAN, без авторизации)   ┌────────────────────────┐
+│  КЛИЕНТ  (PySide6)     │ ───────────────────────────────► │  СЕРВЕР  (stdlib http) │
+│  macOS / Win11 / Linux │ ◄─────────────────────────────── │  Windows 11            │
+│  • Пробудить ПК (WoL)  │   JSON  {"ok":true, ...}         │  • status              │
+│  • Статус ПК (ping)    │                                  │  • hibernate           │
+│  • Статус сервера      │   WoL — magic packet (UDP:9)     │  • start_lmstudio      │
+│  • Гибернация          │ ───────────────────────────────► │  • stop_lmstudio       │
+│  • Вкл/Выкл LM Studio  │   (сидит отдельно, будит NIC)    │                        │
+│  • Настройки (JSON)    │                                  │                        │
+└────────────────────────┘                                  └────────────────────────┘
+```
+
+---
+
+## Структура репозитория
+
+```
+remote-pc-manager/
+├── README.md
+├── client/                     # GUI-клиент (PySide6)
+│   ├── main.py                 #   точка входа: python main.py
+│   ├── app.py                  #   главное окно: кнопки, 3 индикатора, статус
+│   ├── theme.py                #   тёмная тема (Fusion + палитра + QSS)
+│   ├── settings_dialog.py      #   диалог настроек (IP, MAC, хост, порт)
+│   ├── wol.py                  #   Wake-on-LAN: magic packet + валидация MAC
+│   ├── netcheck.py             #   ping-проверка IP (кроссплатформенно)
+│   ├── server_api.py           #   HTTP-запросы к серверу (stdlib urllib)
+│   ├── worker.py               #   QThread-worker (фоновые вызовы, не блокирует GUI)
+│   ├── config.py               #   загрузка/сохранение настроек (JSON)
+│   ├── config.example.json     #   пример настроек
+│   └── requirements.txt        #   PySide6>=6.6
+└── server/                     # HTTP-сервер (только stdlib, без зависимостей)
+    ├── main.py                 #   точка входа: python main.py
+    ├── server.py               #   ThreadingHTTPServer + обработчик
+    ├── commands.py             #   диспетчер команд
+    ├── lmstudio.py             #   is_running / start / stop LM Studio
+    ├── hibernate.py            #   гибернация (в фоне, после отправки ответа)
+    ├── config.py               #   загрузка конфигурации (JSON)
+    ├── log.py                  #   лог в файл + консоль
+    ├── config.example.json     #   пример конфигурации
+    ├── start_background.py     #   запуск в фоне (Windows DETACHED / unix session)
+    ├── start_server.bat        #   запуск в минимизированном окне (Windows)
+    └── requirements.txt        #   только стандартная библиотека
+```
+
+Код **кроссплатформенный**: пути, имена процессов и способы остановки/запуска
+выбираются в зависимости от ОС (`platform.system()`). Всё настраивается в JSON-конфигах.
+
+---
+
+## Сервер (Windows 11)
+
+### Требования
+- **Python 3.10+** (проверено на 3.13). Внешних зависимостей **нет** — только stdlib.
+- Windows 11 (целевая ОС). Код также работает на macOS/Linux для разработки.
+
+### Установка
+```bat
+cd server
+:: зависимости не нужны — только стандартная библиотека
+python -m venv .venv        :: опционально
+.venv\Scripts\activate
+```
+
+### Конфигурация
+Скопируйте пример и заполните под себя:
+```bat
+copy config.example.json config.json
+```
+`config.json`:
+```json
+{
+  "host": "0.0.0.0",
+  "port": 8787,
+  "lmstudio": {
+    "exe": "C:\\Users\\YOURUSER\\AppData\\Local\\Programs\\LM Studio\\LM Studio.exe",
+    "process_name": "LM Studio.exe"
+  },
+  "hibernate": {
+    "method": "rundll32",
+    "delay_s": 1.0
+  },
+  "log_file": "server.log",
+  "log_level": "INFO"
+}
+```
+
+| Поле | Описание |
+|---|---|
+| `host` / `port` | Адрес и порт прослушивания. `0.0.0.0` — доступен по LAN. |
+| `lmstudio.exe` | Полный путь к `LM Studio.exe` (Windows). Пусто → будет запущено по имени процесса. |
+| `lmstudio.process_name` | Имя процесса для проверки/остановки: `LM Studio.exe`. |
+| `hibernate.method` | `rundll32` (`rundll32.exe powrprof.dll,SetSuspendState 0,1,0`) или `shutdown` (`shutdown /h /f`). |
+| `hibernate.delay_s` | Пауза (сек) до гибернации — чтобы HTTP-ответ успел уйти клиенту. |
+| `log_file` | Файл лога команд (рядом с `main.py`). |
+| `log_level` | `DEBUG` / `INFO` / `WARNING`. |
+
+> **macOS/Linux (dev/test):** для `lmstudio.exe` укажите путь к бинарнику/скрипту,
+> либо оставьте пустым — тогда запуск по имени через `open -a` / поиск процесса,
+> а остановка через `pkill -f <имя>`. Гибернация на Unix — `pmset sleepnow` (только для
+> проверки кода; на Windows используйте `rundll32`/`shutdown`).
+
+### Запуск
+
+**В консоли (foreground, виден вывод):**
+```bat
+cd server
+python main.py
+```
+
+**В фоне / в минимизированном окне (Windows):**
+```bat
+:: вариант 1 — минимизированное окно
+start_server.bat
+
+:: вариант 2 — полностью в фоне (DETACHED), печатает PID
+python start_background.py
+```
+
+**Остановка (Windows):**
+```bat
+:: если запускали через start_server.bat:
+taskkill /F /FI "WINDOWTITLE eq RPCM server"
+:: либо по порту:
+for /f "tokens=5" %a in ('netstat -ano ^| findstr :8787') do taskkill /F /PID %a
+```
+
+### Проверка из другой машины (curl)
+
+```bash
+# базовый статус (удобно в браузере)
+curl http://<IP_Винды>:8787/
+
+# состояние (в т.ч. запущена ли LM Studio)
+curl http://<IP_Винды>:8787/status
+
+# команды
+curl -X POST http://<IP_Винды>:8787/command -H "Content-Type: application/json" \
+     -d '{"command":"status"}'
+curl -X POST http://<IP_Винды>:8787/command -H "Content-Type: application/json" \
+     -d '{"command":"start_lmstudio"}'
+curl -X POST http://<IP_Винды>:8787/command -H "Content-Type: application/json" \
+     -d '{"command":"stop_lmstudio"}'
+curl -X POST http://<IP_Винды>:8787/command -H "Content-Type: application/json" \
+     -d '{"command":"hibernate"}'   # ⚠ машина погаснет после ответа!
+```
+
+### API
+
+| Метод | Путь | Тело | Ответ |
+|---|---|---|---|
+| `GET` | `/` | — | `{"ok": true, "service": "rpcm-server"}` |
+| `GET` | `/status` | — | `{"ok": true, "command": "status", "lmstudio_running": true}` |
+| `POST` | `/command` | `{"command": "<имя>"}` | см. ниже |
+
+**Команды** (`POST /command`):
+
+| Команда | Ответ |
+|---|---|
+| `status` | `{"ok": true, "command": "status", "lmstudio_running": bool}` — сам ответ подтверждает доступность сервера. |
+| `hibernate` | `{"ok": true, "command": "hibernate", "note": "гибернация запущена"}` — ответ уходит, **потом** машина уходит в гибернацию. |
+| `start_lmstudio` | `{"ok": true, "command": "start_lmstudio", "pid": int, "exe": "..."}` |
+| `stop_lmstudio` | `{"ok": true, "command": "stop_lmstudio", "killed": "LM Studio.exe"}` (или `"killed": null` + `note`, если не было запущено) |
+
+Ошибки: `{"ok": false, "error": "..."}` с HTTP `400` (плохое тело / неизвестная команда)
+или `404` (неизвестный путь).
+
+**Лог** — все команды пишутся в `server.log` (путь из `log_file`), формат:
+`2026-11-21 12:00:00,000  INFO   server: 192.168.1.50 "POST /command" status`.
+
+---
+
+## Клиент (macOS / Windows 11 / Linux)
+
+### Требования
+- **Python 3.10+** (проверено на 3.13).
+- **PySide6** — единственная зависимость.
+
+### Установка
+```bash
+cd client
+python -m venv .venv
+# macOS / Linux:
+source .venv/bin/activate
+# Windows:
+.venv\Scripts\activate
+
+pip install -r requirements.txt
+```
+
+### Конфигурация
+Настройки хранятся в `client/config.json` (рядом с `main.py`). При первом запуске
+создаётся из значений по умолчанию. Скопировать пример вручную:
+```bash
+cp config.example.json config.json
+```
+`config.json`:
+```json
+{
+  "pc": { "ip": "192.168.1.100", "mac": "AA:BB:CC:DD:EE:FF" },
+  "server": { "host": "192.168.1.100", "port": 8787 }
+}
+```
+
+| Поле | Описание |
+|---|---|
+| `pc.ip` | IP управляемого ПК (для пинг-проверки). |
+| `pc.mac` | MAC-адрес сетевой карты (для Wake-on-LAN). Формат `AA:BB:CC:DD:EE:FF`. |
+| `server.host` | Хост/IP сервера (Винды). |
+| `server.port` | Порт сервера (по умолчанию `8787`). |
+
+> MAC и IP можно задать и **в GUI**: кнопка **⚙ Настройки**. MAC принимается в любом
+> виде (`AA:BB:…`, `aa-bb-…`, `aabb.ccdd.eeff`, `AABBCCDDEEFF`).
+
+### Запуск
+```bash
+# macOS / Linux
+python main.py
+
+# Windows
+.venv\Scripts\python main.py
+```
+
+### Использование (кнопки сверху вниз)
+
+| Кнопка | Что делает |
+|---|---|
+| **⏻ Пробудить ПК (Wake-on-LAN)** | Шлёт magic packet (UDP broadcast `255.255.255.255:9`, ×3) по MAC. |
+| **Статус ПК** + *Проверить* | 🟢 в сети / 🔴 не отвечает — ping по `pc.ip`. |
+| **Статус сервера** + *Проверить* | 🟢 отвечает / 🔴 нет ответа — `status`-запрос к серверу. |
+| **💤 Гибернация** | Команда `hibernate` серверу (машина погаснет). |
+| **▶ Включить LM Studio** | Команда `start_lmstudio`. |
+| **⏹ Выключить LM Studio** | Команда `stop_lmstudio`. |
+| **Состояние LM Studio** + *Проверить состояние* | 🟢 запущена / 🔴 не запущена. |
+| **⚙ Настройки** | Диалог: IP, MAC, хост, порт → сохранение в `config.json`. |
+
+Все сетевые/блокирующие действия выполняются в фоновом потоке (`QThread`),
+GUI не «зависает». Ошибки показываются в строке статуса снизу (красным).
+
+---
+
+## Wake-on-LAN: чтобы ПК реально просыпался
+
+Magic packet лишь будит сетевую карту; чтобы ПК действительно включился:
+
+1. **BIOS/UEFI:** включено `Wake on LAN` / `Power On By PCI-E / PME` для сетевой карты.
+2. **Сетевая карта** должна получать питание в выключенном состоянии (`ErP/EuP` — **выключить**).
+3. Клиент и ПК — в **одной L2-сети** (broadcast доходит). Без одного роутера/коммутатора
+   не сработает.
+4. Обычно WoL не будит ПК из **гибернации** (только из сна/выключенного) — проверяйте
+   сценарий, который вам нужен.
+5. IP/MAC должны соответствовать сетевой карте, у которой включён WoL.
+
+---
+
+## Быстрый прогон «всё с нуля»
+
+**1) Сервер (Windows 11):**
+```bat
+cd server
+copy config.example.json config.json      :: впишите exe / process_name
+python main.py
+```
+
+**2) Проверка (с macOS/любой машины):**
+```bash
+curl http://<IP_Винды>:8787/status
+# -> {"ok": true, "command": "status", "lmstudio_running": false}
+```
+
+**3) Клиент (macOS):**
+```bash
+cd client
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+python main.py
+```
+В GUI: **⚙ Настройки** → впишите IP/MAC ПК и хост/порт сервера → **Сохранить**.
+Дальше — кнопки **Проверить**, **Пробудить ПК**, **Включить/Выключить LM Studio**.
+
+---
+
+## Диагностика
+
+| Симптом | Где искать |
+|---|---|
+| Клиент: «сервер не отвечает» | Сервер запущен? Правильный хост/порт? Файрвол Windows пропускает порт? |
+| `status` приходит, но LM Studio не гаснет | `lmstudio.process_name` совпадает с реальным именем (`tasklist`)? |
+| WoL не будит | BIOS WoL включён? Одна L2-сеть? MAC верный? |
+| Гибернация не срабатывает | `hibernate.method`? Гибернация включена в настройках электропитания Windows? |
+| Логи команд | `server/server.log` (путь из `log_file`). |

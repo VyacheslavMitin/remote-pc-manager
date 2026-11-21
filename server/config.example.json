@@ -1,0 +1,14 @@
+{
+  "host": "0.0.0.0",
+  "port": 8787,
+  "lmstudio": {
+    "exe": "C:\\Users\\YOURUSER\\AppData\\Local\\Programs\\LM Studio\\LM Studio.exe",
+    "process_name": "LM Studio.exe"
+  },
+  "hibernate": {
+    "method": "rundll32",
+    "delay_s": 1.0
+  },
+  "log_file": "server.log",
+  "log_level": "INFO"
+}
