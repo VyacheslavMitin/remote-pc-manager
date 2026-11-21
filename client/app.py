@@ -4,8 +4,8 @@
 сам опрашивает всё, что проверяется — пинг ПК + один status-запрос к серверу
 (проверяет LM Studio). Сервер и ПК — одна машина, поэтому отдельного
 индикатора «Сервер» нет.
-Включение автопроверки и её интервал настраиваются в «⚙ Настройки»;
-быстро вкл/выкл — кнопкой «⏱ Авто».
+Включение автопроверки и её интервал настраиваются только в «⚙ Настройки».
+Пока идёт проверка, индикатор строки жёлтый.
 """
 from __future__ import annotations
 
@@ -64,6 +64,11 @@ class StatusRow(QWidget):
         if tooltip:
             self.dot.setToolTip(tooltip)
 
+    def set_checking(self) -> None:
+        """Состояние «проверка идёт» — жёлтый индикатор."""
+        self.dot.setText("🟡")
+        self.dot.setToolTip("проверка…")
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -88,21 +93,10 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(16, 16, 16, 16)
         root.setSpacing(10)
 
-        # Заголовок + переключатель автопроверки
-        top = QHBoxLayout()
+        # Заголовок
         title = QLabel("Управление удалённым ПК")
         title.setObjectName("title")
-        self.btn_auto = QPushButton(
-            "⏱  Авто: вкл" if self._auto_enabled else "⏱  Авто: выкл"
-        )
-        self.btn_auto.setToolTip(
-            f"Автопроверка состояния каждые {self._auto_interval_s} секунд"
-        )
-        self.btn_auto.clicked.connect(self._toggle_auto)
-        top.addWidget(title)
-        top.addStretch(1)
-        top.addWidget(self.btn_auto)
-        root.addLayout(top)
+        root.addWidget(title)
 
         # 1. Wake-on-LAN
         self.btn_wol = QPushButton("⏻  Пробудить ПК (Wake-on-LAN)")
@@ -207,14 +201,6 @@ class MainWindow(QMainWindow):
     def _auto_interval_ms(self) -> int:
         return max(1, int(self._auto_interval_s)) * 1000
 
-    def _sync_auto_button(self) -> None:
-        self.btn_auto.setText(
-            "⏱  Авто: вкл" if self._auto_enabled else "⏱  Авто: выкл"
-        )
-        self.btn_auto.setToolTip(
-            f"Автопроверка состояния каждые {self._auto_interval_s} секунд"
-        )
-
     def _begin_manual(self) -> None:
         self._manual_inflight += 1
         self._auto_mode = False
@@ -234,12 +220,14 @@ class MainWindow(QMainWindow):
 
         self._auto_mode = True
         host = self.cfg["pc"]["ip"]
+        self.row_pc.set_checking()
         self._run(
             lambda: ping_host(host),
             ok=lambda res: self._apply_pc(bool(res), "в сети" if res else "не отвечает на ping"),
             fail=lambda msg: self._apply_pc(False, f"ошибка: {msg}"),
         )
         sh, sp = self._server()
+        self.row_lm.set_checking()
         self._run(
             lambda: api_request(sh, sp, "status"),
             ok=lambda res: self._apply_status(res),
@@ -279,21 +267,6 @@ class MainWindow(QMainWindow):
         if self.status.text() != line:
             self.status.setText(line)
 
-    def _toggle_auto(self) -> None:
-        self._auto_enabled = not self._auto_enabled
-        ac = self.cfg.setdefault("auto_check", {})
-        ac["enabled"] = self._auto_enabled
-        self._sync_auto_button()
-        if self._auto_enabled:
-            self._timer.start()
-            self._msg(f"⏱ Автопроверка включена (каждые {self._auto_interval_s} с).")
-            self._auto_mode = True
-            self._auto_tick()
-        else:
-            self._timer.stop()
-            self._auto_mode = False
-            self._msg("⏱ Автопроверка выключена.")
-
     # ---------- действия ----------
     def on_wol(self) -> None:
         mac = self.cfg["pc"]["mac"]
@@ -310,6 +283,7 @@ class MainWindow(QMainWindow):
         host = self.cfg["pc"]["ip"]
         row.btn.setEnabled(False)
         self._begin_manual()
+        row.set_checking()
         self._msg(f"Пинг {host} …")
 
         def _ok(res):
@@ -327,6 +301,7 @@ class MainWindow(QMainWindow):
         host, port = self._server()
         row.btn.setEnabled(False)
         self._begin_manual()
+        row.set_checking()
         self._msg("Проверяю состояние LM Studio …")
 
         def _ok(res):
@@ -381,6 +356,7 @@ class MainWindow(QMainWindow):
     def _check_lm_quiet(self) -> None:
         """После вкл/выкл обновляет индикатор LM, не трогая статус-бар."""
         host, port = self._server()
+        self.row_lm.set_checking()
         self._run(
             lambda: api_request(host, port, "status"),
             ok=lambda res: self.row_lm.set_state(
@@ -424,7 +400,6 @@ class MainWindow(QMainWindow):
             ac = self.cfg.get("auto_check", {})
             self._auto_enabled = bool(ac.get("enabled", True))
             self._auto_interval_s = max(1, int(ac.get("interval_s", 10)))
-            self._sync_auto_button()
             self._timer.setInterval(self._auto_interval_ms())
             if self._auto_enabled:
                 self._timer.start()
