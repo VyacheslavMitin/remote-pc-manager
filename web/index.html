@@ -302,8 +302,9 @@ input::selection { background: var(--accent); color: #fff; }
    - заголовки блоков: «ПК (имя, ОС, аптайм)», «LM Studio (v…, модель, контекст)»;
    - строка состояния: «Автопроверка: включена, следующая в HH:MM:SS» / «выключена»;
    - команды — реальные fetch в http://<ip>:<порт> (GET /status, POST /command).
-   Браузер не умеет ICMP/UDP: пинг ПК заменяется HTTP-доступностью сервера
-   (сервер на той же машине), WoL в браузере не отправляется.
+   Браузер не умеет ICMP: пинг ПК заменяется HTTP-доступностью сервера
+   (сервер на той же машине). WoL: браузер шлёт POST /wol маку (serve.py),
+   а мак отправляет UDP magic packet (та же логика, что в client/wol.py).
    ═════════════════════════════════════════════════════════════════════ */
 
 const DEFAULT_PC_OS = "Windows 11";
@@ -555,12 +556,19 @@ async function onCheckLM() {
 async function onWol() {
   const mac = cfg.pc.mac;
   beginManual();
-  msg(`Отправляю magic packet → ${mac} …`);
+  msg(`Отправляю magic packet → ${mac} (будит с мака)…`);
   try {
-    const res = await apiCommand("wol", { mac }, 6000);
-    msg(`✅ Magic packet: ${res.to || mac} (MAC ${res.mac || mac}, ×${res.sent || 3}).`);
+    const r = await fetch("/wol", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mac }),
+      signal: AbortSignal.timeout(8000),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
+    msg(`✅ Magic packet: ${j.to || mac} (MAC ${j.mac || mac}, ×${j.sent || 3}).`);
   } catch (e) {
-    msg(`❌ WoL: ${e.message} (в браузере UDP недоступен — используйте desktop-клиент)`);
+    msg(`❌ WoL: ${e.message} (эндпоинт /wol — на маке, serve.py)`);
   }
   finishManual();
 }
