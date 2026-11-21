@@ -112,8 +112,10 @@ copy config.example.json config.json
 
 > **macOS/Linux (dev/test):** для `lmstudio.exe` укажите путь к бинарнику/скрипту,
 > либо оставьте пустым — тогда запуск по имени через `open -a` / поиск процесса,
-> а остановка через `pkill -f <имя>`. Гибернация на Unix — `pmset sleepnow` (только для
-> проверки кода; на Windows используйте `rundll32`/`shutdown`).
+> а остановка сначала аккуратная (`osascript quit` на macOS / SIGTERM),
+> затем принудительная (SIGKILL), если приложение не завершилось. Гибернация
+> на Unix — `pmset sleepnow` (только для проверки кода; на Windows используйте
+> `rundll32`/`shutdown`).
 
 ### Запуск
 

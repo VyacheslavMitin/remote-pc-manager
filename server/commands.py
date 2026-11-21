@@ -4,7 +4,8 @@
     status          -> {"ok": true, "lmstudio_running": bool}
     hibernate       -> {"ok": true, ...}  (машина погаснет после ответа)
     start_lmstudio  -> {"ok": true, "pid": int, ...}
-    stop_lmstudio   -> {"ok": true, "killed": str|None, ...}
+    stop_lmstudio   -> {"ok": true, "killed": str|None,
+                        "note": "остановлена аккуратно|принудительно|не был запущен"}
 """
 from __future__ import annotations
 

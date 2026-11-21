@@ -404,10 +404,13 @@ class MainWindow(QMainWindow):
         self._msg("Отправляю команду: остановить LM Studio …")
 
         def _ok(res):
-            if res.get("killed") is None and res.get("note"):
-                self._msg(f"✅ LM Studio: {res['note']}.")
+            note = res.get("note")
+            if res.get("killed") is None and note:
+                self._msg(f"✅ LM Studio: {note}.")
+            elif note:
+                self._msg(f"✅ LM Studio: {note}.")
             else:
-                self._msg(f"✅ LM Studio: остановлена ({res.get('killed')}).")
+                self._msg("✅ LM Studio: остановлена.")
             self._check_lm_quiet()
 
         def _fail(msg):
