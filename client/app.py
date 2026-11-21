@@ -13,9 +13,14 @@
 (pc_name, os_name, uptime_s из status; аптайм форматируется без секунд,
 ОС — из ответа сервера, либо константа Windows 11, если сервер не
 прислал её), иначе просто «ПК» (сервер недоступен).
-Шестерёнка настроек — в верхнем правом углу (только значок);
+Шестерёнка настроек — в верхнем левом углу (только значок);
 внизу слева — строка состояния автопроверки (вкл/выкл + время следующей
 проверки), внизу справа — «IP: <адрес управляемого ПК>» (из настроек).
+Заголовок блока «LM Studio» — версия LM Studio на целевом ПК:
+«LM Studio (v0.3.25)», если сервер прислал lmstudio_version; при старой
+версии сервера (версия неизвестна) — «LM Studio (запущена)» / «LM Studio
+(не запущена)» (lmstudio_running из status), а если сервер недоступен —
+просто «LM Studio» (не проверено).
 """
 from __future__ import annotations
 
@@ -128,14 +133,10 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(16, 16, 16, 16)
         root.setSpacing(10)
 
-        # Заголовок + шестерёнка настроек (верхний правый угол, только значок)
+        # Шестерёнка настроек в верхнем левом углу (только значок), затем заголовок
         title_row = QHBoxLayout()
         title_row.setContentsMargins(0, 0, 0, 0)
         title_row.setSpacing(8)
-        title = QLabel("Управление удалённым ПК")
-        title.setObjectName("title")
-        title_row.addWidget(title)
-        title_row.addStretch(1)
         self.btn_settings = QPushButton("⚙")
         self.btn_settings.setObjectName("gear")
         self.btn_settings.setFixedSize(51, 51)
@@ -143,6 +144,10 @@ class MainWindow(QMainWindow):
         self.btn_settings.setToolTip("Настройки")
         self.btn_settings.clicked.connect(self.on_settings)
         title_row.addWidget(self.btn_settings)
+        title = QLabel("Управление удалённым ПК")
+        title.setObjectName("title")
+        title_row.addWidget(title)
+        title_row.addStretch(1)
         root.addLayout(title_row)
 
         # ── Блок «ПК» ── проверка состояния сверху, затем действия
@@ -164,7 +169,7 @@ class MainWindow(QMainWindow):
         root.addWidget(block_pc)
 
         # ── Блок «LM Studio» ── проверка состояния сверху, затем действия
-        block_lm, lmb, _lm_title = self._block("LM Studio")
+        block_lm, lmb, self.title_lm = self._block("LM Studio")
         self.row_lm = StatusRow("Состояние", self.on_check_lm)
         lmb.addWidget(self.row_lm)
         lm = QHBoxLayout()
@@ -281,6 +286,24 @@ class MainWindow(QMainWindow):
             parts.append(_format_uptime(uptime_s))
         self.title_pc.setText(f"ПК ({', '.join(parts)})")
 
+    def _set_lm_title(self, running: bool | None, version: str | None = None) -> None:
+        """Заголовок блока «LM Studio»: версия LM Studio на целевом ПК —
+        «LM Studio (v0.3.25)» (lmstudio_version из status). Если версия
+        неизвестна (старый сервер) — «(запущена)» / «(не запущена)» по
+        lmstudio_running; сервер недоступен и версии нет — просто «LM Studio»."""
+        version = (version or "").strip()
+        if version:
+            if not version.lower().startswith("v"):
+                version = f"v{version}"
+            self.title_lm.setText(f"LM Studio ({version})")
+            return
+        if running is None:
+            self.title_lm.setText("LM Studio")
+        elif running:
+            self.title_lm.setText("LM Studio (запущена)")
+        else:
+            self.title_lm.setText("LM Studio (не запущена)")
+
     def _block(self, title: str) -> tuple[QFrame, QVBoxLayout, QLabel]:
         """Собирает блок-панель: заголовок секции + внутренний layout.
 
@@ -352,6 +375,9 @@ class MainWindow(QMainWindow):
             running = bool(res["lmstudio_running"])
             self.row_lm.set_state(running, "запущена" if running else "не запущена")
             self._last["lm"] = running
+            self._set_lm_title(running, res.get("lmstudio_version"))
+        else:
+            self._set_lm_title(None, res.get("lmstudio_version"))
         self._set_pc_title(
             res.get("pc_name"), res.get("os_name"), res.get("uptime_s")
         )
@@ -361,6 +387,7 @@ class MainWindow(QMainWindow):
     def _apply_status_down(self, msg: str) -> None:
         self.row_lm.set_state(None, "сервер недоступен")
         self._last["lm"] = None
+        self._set_lm_title(None)
         self._set_pc_title(None)
         self._last["t"] = time.strftime("%H:%M:%S")
         self._refresh_status_line()
@@ -427,6 +454,7 @@ class MainWindow(QMainWindow):
             running = bool(res.get("lmstudio_running"))
             self.row_lm.set_state(running, "запущена" if running else "не запущена")
             self._last["lm"] = running
+            self._set_lm_title(running, res.get("lmstudio_version"))
             self._set_pc_title(
             res.get("pc_name"), res.get("os_name"), res.get("uptime_s")
         )
@@ -435,6 +463,7 @@ class MainWindow(QMainWindow):
         def _fail(msg):
             self.row_lm.set_state(None, f"не проверено: {msg}")
             self._last["lm"] = None
+            self._set_lm_title(None)
             self._set_pc_title(None)
             self._msg(f"LM Studio: не проверено — {msg}")
 
@@ -488,12 +517,15 @@ class MainWindow(QMainWindow):
             self.row_lm.set_state(
                 bool(res.get("lmstudio_running")),
                 "запущена" if res.get("lmstudio_running") else "не запущена")
+            self._set_lm_title(bool(res.get("lmstudio_running")),
+                               res.get("lmstudio_version"))
             self._set_pc_title(
             res.get("pc_name"), res.get("os_name"), res.get("uptime_s")
         )
 
         def _fail(msg):
             self.row_lm.set_state(None, f"не проверено: {msg}")
+            self._set_lm_title(None)
             self._set_pc_title(None)
 
         self._run(lambda: api_request(host, port, "status"), ok=_ok, fail=_fail)
