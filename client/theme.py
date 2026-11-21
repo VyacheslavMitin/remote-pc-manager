@@ -13,15 +13,15 @@ QLabel#ip { color: #9a9aa2; font-size: 12px; }
 QLabel#dot { font-size: 15px; }
 
 QPushButton#gear {
-    background-color: transparent;
-    border: none;
+    background-color: #242428;
+    border: 1px solid #3a3a40;
     border-radius: 10px;
     font-size: 27px;
     color: #cfcfd4;
     padding: 0px;
 }
-QPushButton#gear:hover { background-color: #333338; color: #ffffff; }
-QPushButton#gear:pressed { background-color: #242428; }
+QPushButton#gear:hover { background-color: #333338; border-color: #4a4a52; color: #ffffff; }
+QPushButton#gear:pressed { background-color: #1e1e22; border-color: #4a4a52; }
 
 QPushButton {
     background-color: #2a2a2e;

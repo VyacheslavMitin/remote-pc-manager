@@ -7,7 +7,8 @@
 Включение автопроверки и её интервал настраиваются только в «⚙ Настройки».
 Пока идёт проверка, индикатор строки жёлтый.
 Раскладка: шестерёнка настроек — в верхнем правом углу (только значок);
-внизу справа (в одну строку со статусом) — IP управляемого ПК (из настроек).
+внизу слева — строка состояния автопроверки (вкл/выкл + время следующей
+проверки), внизу справа — «IP <адрес управляемого ПК>» (из настроек).
 """
 from __future__ import annotations
 
@@ -157,7 +158,7 @@ class MainWindow(QMainWindow):
         self.status.setWordWrap(True)
         self.status.setTextInteractionFlags(Qt.TextSelectableByMouse)
         bottom.addWidget(self.status, 1)
-        self.lbl_ip = QLabel(self.cfg["pc"]["ip"])
+        self.lbl_ip = QLabel(f"IP {self.cfg['pc']['ip']}")
         self.lbl_ip.setObjectName("ip")
         self.lbl_ip.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.lbl_ip.setToolTip("IP управляемого ПК (из ⚙ Настроек)")
@@ -173,6 +174,8 @@ class MainWindow(QMainWindow):
             self._timer.start()
             # первая проверка сразу, чтобы не ждать N секунд на «⚪»
             self._auto_tick()
+        else:
+            self.status.setText(self._auto_line())
 
     # ---------- инфраструктура ----------
     def _run(self, fn, ok=None, fail=None, on_finish=None) -> Worker:
@@ -233,6 +236,10 @@ class MainWindow(QMainWindow):
         if row is not None:
             row.btn.setEnabled(True)
         self._manual_inflight = max(0, self._manual_inflight - 1)
+        # автопроверка выключена — верни постоянную строку (она не
+        # обновится сама, тики не идут), сообщение об операции было временным
+        if self._manual_inflight == 0 and not self._auto_enabled:
+            self.status.setText(self._auto_line())
 
     # ---------- автопроверка ----------
     def _auto_tick(self) -> None:
@@ -278,16 +285,24 @@ class MainWindow(QMainWindow):
         self._last["t"] = time.strftime("%H:%M:%S")
         self._refresh_status_line()
 
+    def _auto_line(self) -> str:
+        """Текст нижней строки: состояние автопроверки.
+
+        Включена — сколько времени до следующей проверки; выключена — просто
+        «выключена». Индикаторов здесь нет (они в строках «ПК»/«LM Studio»).
+        """
+        if not self._auto_enabled:
+            return "Автопроверка: выключена"
+        if self._timer.isActive():
+            remaining_s = max(0, self._timer.remainingTime()) // 1000
+            nxt = time.strftime("%H:%M:%S", time.localtime(time.time() + remaining_s))
+            return f"Автопроверка: включена, следующая в {nxt}"
+        return "Автопроверка: включена"
+
     def _refresh_status_line(self) -> None:
         if not self._auto_mode:
             return
-        l = self._last
-
-        def d(v):
-            return "🟢" if v is True else ("🔴" if v is False else "⚪")
-
-        line = (f"Автопроверка {l['t'] or '—'} · "
-                f"ПК {d(l['pc'])} · LM {d(l['lm'])}")
+        line = self._auto_line()
         if self.status.text() != line:
             self.status.setText(line)
 
@@ -433,4 +448,4 @@ class MainWindow(QMainWindow):
             else:
                 self._timer.stop()
                 self._auto_mode = False
-                self._msg("⚙ Настройки сохранены (автопроверка выкл).")
+                self.status.setText(self._auto_line())
