@@ -41,7 +41,7 @@ remote-pc-manager/
 │   ├── config.py               #   загрузка/сохранение настроек (JSON)
 │   ├── config.example.json     #   пример настроек
 │   └── requirements.txt        #   PySide6>=6.6
-└── server/                     # HTTP-сервер (только stdlib, без зависимостей)
+├── server/                     # HTTP-сервер (только stdlib, без зависимостей)
     ├── main.py                 #   точка входа: python main.py
     ├── server.py               #   ThreadingHTTPServer + обработчик
     ├── commands.py             #   диспетчер команд
@@ -53,6 +53,9 @@ remote-pc-manager/
     ├── start_background.py     #   запуск в фоне (Windows DETACHED / unix session)
     ├── start_server.bat        #   запуск в минимизированном окне (Windows)
     └── requirements.txt        #   только стандартная библиотека
+└── start/                      # macOS: .app-лаунчер клиента
+    ├── AppIcon.icns            #   иконка приложения
+    └── build_app.sh            #   сборка start/Remote-PC-Manager.app
 ```
 
 Код **кроссплатформенный**: пути, имена процессов и способы остановки/запуска
@@ -236,6 +239,19 @@ python main.py
 # Windows
 .venv\Scripts\python main.py
 ```
+
+**macOS: запуск через .app (иконка в Dock/Finder)**
+
+Клиент можно запускать как обычное macOS-приложение: двойной клик по
+`start/Remote-PC-Manager.app` (или перетащите его в Dock). Лаунчер внутри
+бандла запускает `.venv/bin/python3 client/main.py`; конфиг читается из
+`client/config.json` независимо от рабочего каталога.
+
+```bash
+sh start/build_app.sh   # собрать/пересобрать .app-бандл
+```
+
+Лог запуска через .app пишется в `~/Library/Logs/remote-pc-manager.log`.
 
 ### Использование (кнопки сверху вниз)
 

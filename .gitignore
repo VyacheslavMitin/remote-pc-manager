@@ -17,6 +17,9 @@ logs/
 # macOS
 .DS_Store
 
+# Собранный .app-бандл (собирается скриптом start/build_app.sh)
+start/Remote-PC-Manager.app/
+
 # IDE
 .idea/
 .vscode/
