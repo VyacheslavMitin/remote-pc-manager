@@ -9,9 +9,10 @@
 Раскладка: главное окно разделено на два блока — «ПК» и «LM Studio»;
 в каждом блоке строка проверки состояния (индикатор + «Проверить»)
 сверху, под ней — кнопки действий.
-Заголовок блока «ПК» — «ПК (имя, ОС)», если сервер ответил (pc_name и
-os_name из status; ОС — из ответа сервера, либо константа Windows 11,
-если сервер не прислал её), иначе просто «ПК» (сервер недоступен).
+Заголовок блока «ПК» — «ПК (имя, ОС, аптайм)», если сервер ответил
+(pc_name, os_name, uptime_s из status; аптайм форматируется без секунд,
+ОС — из ответа сервера, либо константа Windows 11, если сервер не
+прислал её), иначе просто «ПК» (сервер недоступен).
 Шестерёнка настроек — в верхнем правом углу (только значок);
 внизу слева — строка состояния автопроверки (вкл/выкл + время следующей
 проверки), внизу справа — «IP: <адрес управляемого ПК>» (из настроек).
@@ -43,6 +44,25 @@ from PySide6.QtWidgets import (
 # не прислал os_name в status (старая версия сервера). Если сервер прислал —
 # его значение в приоритете.
 DEFAULT_PC_OS = "Windows 11"
+
+
+def _format_uptime(total: int) -> str:
+    """Аптайм без секунд: «12 мин», «3 ч 14 мин», «2 д 5 ч».
+
+    Берутся две старших ненулевых единицы; менее минуты — «меньше минуты»."""
+    total = max(0, int(total))
+    if total < 60:
+        return "меньше минуты"
+    parts: list[str] = []
+    rest = total
+    for div, unit in ((86400, "д"), (3600, "ч"), (60, "мин")):
+        v = rest // div
+        if v:
+            parts.append(f"{v} {unit}")
+        rest %= div
+        if len(parts) == 2:
+            break
+    return " ".join(parts) or "меньше минуты"
 
 
 class StatusRow(QWidget):
@@ -108,14 +128,11 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(16, 16, 16, 16)
         root.setSpacing(10)
 
-        # Заголовок + шестерёнка настроек (верхний правый угол, только значок)
+        # Шестерёнка настроек — верхний левый угол (только значок),
+        # затем заголовок
         title_row = QHBoxLayout()
         title_row.setContentsMargins(0, 0, 0, 0)
         title_row.setSpacing(8)
-        title = QLabel("Управление удалённым ПК")
-        title.setObjectName("title")
-        title_row.addWidget(title)
-        title_row.addStretch(1)
         self.btn_settings = QPushButton("⚙")
         self.btn_settings.setObjectName("gear")
         self.btn_settings.setFixedSize(51, 51)
@@ -123,6 +140,10 @@ class MainWindow(QMainWindow):
         self.btn_settings.setToolTip("Настройки")
         self.btn_settings.clicked.connect(self.on_settings)
         title_row.addWidget(self.btn_settings)
+        title_row.addStretch(1)
+        title = QLabel("Управление удалённым ПК")
+        title.setObjectName("title")
+        title_row.addWidget(title)
         root.addLayout(title_row)
 
         # ── Блок «ПК» ── проверка состояния сверху, затем действия
@@ -239,17 +260,27 @@ class MainWindow(QMainWindow):
         (при создании и после сохранения настроек)."""
         return f"IP: {self.cfg['pc']['ip']}"
 
-    def _set_pc_title(self, name: str | None, os_name: str | None = None) -> None:
-        """Заголовок блока «ПК»: «ПК (имя, ОС)», если сервер ответил
-        (pc_name + os_name из status). ОС — из ответа сервера, либо при
-        старой версии сервера — константа DEFAULT_PC_OS. Сервер
-        недоступен или имя пустое — просто «ПК»."""
+    def _set_pc_title(
+        self,
+        name: str | None,
+        os_name: str | None = None,
+        uptime_s: int | None = None,
+    ) -> None:
+        """Заголовок блока «ПК»: «ПК (имя, ОС, аптайм)», если сервер ответил
+        (pc_name + os_name + uptime_s из status). ОС — из ответа сервера, либо
+        при старой версии сервера — константа DEFAULT_PC_OS. Аптайм форматируется
+        без секунд (uptime_s — секунды). Сервер недоступен или имя пустое —
+        просто «ПК»."""
         name = (name or "").strip()
         if not name:
             self.title_pc.setText("ПК")
             return
+        parts = [name]
         os_text = (os_name or "").strip() or DEFAULT_PC_OS
-        self.title_pc.setText(f"ПК ({name}, {os_text})")
+        parts.append(os_text)
+        if uptime_s is not None:
+            parts.append(_format_uptime(uptime_s))
+        self.title_pc.setText(f"ПК ({', '.join(parts)})")
 
     def _block(self, title: str) -> tuple[QFrame, QVBoxLayout, QLabel]:
         """Собирает блок-панель: заголовок секции + внутренний layout.
@@ -322,7 +353,9 @@ class MainWindow(QMainWindow):
             running = bool(res["lmstudio_running"])
             self.row_lm.set_state(running, "запущена" if running else "не запущена")
             self._last["lm"] = running
-        self._set_pc_title(res.get("pc_name"), res.get("os_name"))
+        self._set_pc_title(
+            res.get("pc_name"), res.get("os_name"), res.get("uptime_s")
+        )
         self._last["t"] = time.strftime("%H:%M:%S")
         self._refresh_status_line()
 
@@ -395,7 +428,9 @@ class MainWindow(QMainWindow):
             running = bool(res.get("lmstudio_running"))
             self.row_lm.set_state(running, "запущена" if running else "не запущена")
             self._last["lm"] = running
-            self._set_pc_title(res.get("pc_name"), res.get("os_name"))
+            self._set_pc_title(
+            res.get("pc_name"), res.get("os_name"), res.get("uptime_s")
+        )
             self._msg(f"LM Studio: {'🟢 запущена' if running else '🔴 не запущена'}")
 
         def _fail(msg):
@@ -454,7 +489,9 @@ class MainWindow(QMainWindow):
             self.row_lm.set_state(
                 bool(res.get("lmstudio_running")),
                 "запущена" if res.get("lmstudio_running") else "не запущена")
-            self._set_pc_title(res.get("pc_name"), res.get("os_name"))
+            self._set_pc_title(
+            res.get("pc_name"), res.get("os_name"), res.get("uptime_s")
+        )
 
         def _fail(msg):
             self.row_lm.set_state(None, f"не проверено: {msg}")

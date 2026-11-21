@@ -167,14 +167,14 @@ curl -X POST http://<IP_Винды>:8787/command -H "Content-Type: application/j
 | Метод | Путь | Тело | Ответ |
 |---|---|---|---|
 | `GET` | `/` | — | `{"ok": true, "service": "rpcm-server"}` |
-| `GET` | `/status` | — | `{"ok": true, "command": "status", "lmstudio_running": true, "pc_name": "DESKTOP-ABC123", "os_name": "Windows 11"}` |
+| `GET` | `/status` | — | `{"ok": true, "command": "status", "lmstudio_running": true, "pc_name": "DESKTOP-ABC123", "os_name": "Windows 11", "uptime_s": 123456}` |
 | `POST` | `/command` | `{"command": "<имя>"}` | см. ниже |
 
 **Команды** (`POST /command`):
 
 | Команда | Ответ |
 |---|---|
-| `status` | `{"ok": true, "command": "status", "lmstudio_running": bool, "pc_name": str, "os_name": str}` — сам ответ подтверждает доступность сервера; `pc_name` — имя ПК (hostname), `os_name` — ОС сервера (напр. «Windows 11»); клиент показывает их в заголовке блока «ПК»: «ПК (имя, ОС)». |
+| `status` | `{"ok": true, "command": "status", "lmstudio_running": bool, "pc_name": str, "os_name": str, "uptime_s": int|null}` — сам ответ подтверждает доступность сервера; `pc_name` — имя ПК (hostname), `os_name` — ОС сервера (напр. «Windows 11»), `uptime_s` — секунд с момента запуска системы; клиент показывает их в заголовке блока «ПК»: «ПК (имя, ОС, аптайм)», аптайм без секунд («3 ч 14 мин»). |
 | `hibernate` | `{"ok": true, "command": "hibernate", "note": "гибернация запущена"}` — ответ уходит, **потом** машина уходит в гибернацию. |
 | `start_lmstudio` | `{"ok": true, "command": "start_lmstudio", "pid": int, "exe": "..."}` |
 | `stop_lmstudio` | `{"ok": true, "command": "stop_lmstudio", "killed": "LM Studio.exe"}` (или `"killed": null` + `note`, если не было запущено) |
@@ -321,7 +321,7 @@ python main.py
 **2) Проверка (с macOS/любой машины):**
 ```bash
 curl http://<IP_Винды>:8787/status
-# -> {"ok": true, "command": "status", "lmstudio_running": false, "pc_name": "DESKTOP-ABC123", "os_name": "Windows 11"}
+# -> {"ok": true, "command": "status", "lmstudio_running": false, "pc_name": "DESKTOP-ABC123", "os_name": "Windows 11", "uptime_s": 123456}
 ```
 
 **3) Клиент (macOS):**

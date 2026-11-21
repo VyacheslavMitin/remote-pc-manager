@@ -3,7 +3,8 @@
 Поддерживаемые команды (тело POST /command: {"command": "<имя>"}):
     status           {"ok": true, "command": "status", "lmstudio_running": bool,
                       "pc_name": "<имя ПК (hostname)>",
-                      "os_name": "<ОС сервера, напр. «Windows 11»>"}
+                      "os_name": "<ОС сервера, напр. «Windows 11»>",
+                      "uptime_s": <секунд с момента запуска системы, int|null>}
     hibernate       -> {"ok": true, ...}  (машина погаснет после ответа)
     start_lmstudio  -> {"ok": true, "pid": int, ...}
     stop_lmstudio   -> {"ok": true, "killed": str|None,
@@ -12,7 +13,10 @@
 from __future__ import annotations
 
 import platform
+import re
 import socket
+import subprocess
+import time
 
 import hibernate
 import lmstudio
@@ -32,6 +36,34 @@ def _os_name() -> str:
     return system or "unknown OS"
 
 
+def _uptime_seconds() -> int | None:
+    """Секунд с момента запуска системы (только stdlib, кроссплатформенно).
+
+    Windows  — GetTickCount64() (мс с момента загрузки, переполнение ~584 года);
+    Linux    — /proc/uptime;
+    macOS    — sysctl kern.boottime.
+    None, если определить не удалось (клиент просто не покажет аптайм)."""
+    system = platform.system()
+    try:
+        if system == "Windows":
+            import ctypes
+            return ctypes.windll.kernel32.GetTickCount64() // 1000  # type: ignore[reportAttributeAccessIssue]
+        if system == "Linux":
+            with open("/proc/uptime", encoding="ascii") as f:
+                return int(float(f.read().split()[0]))
+        if system == "Darwin":
+            out = subprocess.run(
+                ["sysctl", "-n", "kern.boottime"],
+                capture_output=True, text=True, timeout=5, check=False,
+            ).stdout
+            m = re.search(r"sec\s*=\s*(\d+)", out)
+            if m:
+                return max(0, int(time.time()) - int(m.group(1)))
+    except Exception:
+        pass
+    return None
+
+
 def run(command: str, cfg: Config) -> dict:
     c = (command or "").strip().lower()
     if c not in SUPPORTED:
@@ -46,6 +78,7 @@ def run(command: str, cfg: Config) -> dict:
             "lmstudio_running": lmstudio.is_running(cfg.lm_process),
             "pc_name": socket.gethostname(),
             "os_name": _os_name(),
+            "uptime_s": _uptime_seconds(),
         }
 
     if c == "hibernate":
