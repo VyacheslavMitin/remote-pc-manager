@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 >nul
 rem  Запуск RPCM-сервера в фоновом (свёрнутом) окне.
 rem  Чтобы остановить: закрыть окно или выполнить
 rem      taskkill /F /FI "WINDOWTITLE eq RPCM server"

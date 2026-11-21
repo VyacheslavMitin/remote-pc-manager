@@ -81,10 +81,7 @@ class SettingsDialog(QDialog):
     def _show_howto(self) -> None:
         QMessageBox.information(
             self, "Как узнать IP и MAC",
-            "IP компьютера — адрес в локальной сети (на Windows: ipconfig /all).\n"
-            "MAC — физический адрес сетевой карты (на Windows: getmac).\n"
-            "Сервер работает на том же компьютере, поэтому он использует "
-            "этот же IP и указанный здесь порт.",
+            "IP и MAC компьютера — на Windows: ipconfig /all.",
         )
 
     def _save(self) -> None:
