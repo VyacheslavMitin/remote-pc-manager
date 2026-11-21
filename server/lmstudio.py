@@ -162,7 +162,7 @@ def version(exe: str = "") -> str | None:
 _MODEL_ID_MAX = 48
 
 
-def loaded_model(port: int = 4321) -> str | None:
+def loaded_model(port: int = 1234) -> str | None:
     """ID загруженной в LM Studio модели через локальный API-сервер.
 
     GET http://127.0.0.1:<port>/v1/models (OpenAI-совместимый ответ:
@@ -207,7 +207,7 @@ def _get_json(url: str, timeout: float = 3.0) -> dict | None:
         return None
 
 
-def loaded_context(port: int = 4321) -> int | None:
+def loaded_context(port: int = 1234) -> int | None:
     """Контекст загруженной модели (токены) через нативный API LM Studio.
 
     GET http://127.0.0.1:<port>/api/v0/models (LM Studio >= 0.3.6):

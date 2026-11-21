@@ -4,7 +4,7 @@
   "lmstudio": {
     "exe": "C:\\Users\\YOURUSER\\AppData\\Local\\Programs\\LM Studio\\LM Studio.exe",
     "process_name": "LM Studio.exe",
-    "api_port": 4321
+    "api_port": 1234
   },
   "hibernate": {
     "method": "rundll32",

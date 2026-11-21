@@ -12,8 +12,8 @@
     start_lmstudio  -> {"ok": true, "pid": int, ...}
     stop_lmstudio   -> {"ok": true, "killed": str|None,
                         "note": "остановлена аккуратно|принудительно|не был запущен"}
-    set_lm_port     тело {"command": "set_lm_port", "port": 4321}
-                    -> {"ok": true, "command": "set_lm_port", "lmstudio_api_port": 4321}
+    set_lm_port     тело {"command": "set_lm_port", "port": 1234}
+                    -> {"ok": true, "command": "set_lm_port", "lmstudio_api_port": 1234}
                        (задаёт lmstudio.api_port и сохраняет его в config.json)
 """
 from __future__ import annotations

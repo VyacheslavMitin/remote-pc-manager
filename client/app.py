@@ -612,7 +612,7 @@ class MainWindow(QMainWindow):
         настройках не теряет значение, даже если сервер недоступен или
         это старая версия без команды set_lm_port."""
         host, port = self._server()
-        lm_port = int(self.cfg.get("lmstudio", {}).get("api_port", 4321))
+        lm_port = int(self.cfg.get("lmstudio", {}).get("api_port", 1234))
 
         def _ok(res):
             got = res.get("lmstudio_api_port")

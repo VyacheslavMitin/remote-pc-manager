@@ -90,7 +90,7 @@ copy config.example.json config.json
   "lmstudio": {
     "exe": "C:\\Users\\YOURUSER\\AppData\\Local\\Programs\\LM Studio\\LM Studio.exe",
     "process_name": "LM Studio.exe",
-    "api_port": 4321
+    "api_port": 1234
   },
   "hibernate": {
     "method": "rundll32",
@@ -106,7 +106,7 @@ copy config.example.json config.json
 | `host` / `port` | Адрес и порт прослушивания. `0.0.0.0` — доступен по LAN. |
 | `lmstudio.exe` | Полный путь к `LM Studio.exe` (Windows). Пусто → будет запущено по имени процесса. |
 | `lmstudio.process_name` | Имя процесса для проверки/остановки: `LM Studio.exe`. |
-| `lmstudio.api_port` | Порт локального API-сервера LM Studio (загруженные модели, `GET /v1/models`). Стандарт LM Studio — 1234; на целевом ПК — 4321. |
+| `lmstudio.api_port` | Порт локального API-сервера LM Studio (загруженные модели, `GET /v1/models`). Стандарт LM Studio — 1234. |
 | `hibernate.method` | `rundll32` (`rundll32.exe powrprof.dll,SetSuspendState 0,1,0`) или `shutdown` (`shutdown /h /f`). |
 | `hibernate.delay_s` | Пауза (сек) до гибернации — чтобы HTTP-ответ успел уйти клиенту. |
 | `log_file` | Файл лога команд (рядом с `main.py`). |
@@ -219,7 +219,7 @@ cp config.example.json config.json
 {
   "pc": { "ip": "192.168.1.100", "mac": "AA:BB:CC:DD:EE:FF" },
   "server": { "port": 8787 },
-  "lmstudio": { "api_port": 4321 },
+  "lmstudio": { "api_port": 1234 },
   "auto_check": { "enabled": true, "interval_s": 10 }
 }
 ```
@@ -229,7 +229,7 @@ cp config.example.json config.json
 | `pc.ip` | IP управляемого ПК (для пинга **и** хост сервера — это одна машина). |
 | `pc.mac` | MAC-адрес сетевой карты (для Wake-on-LAN). Формат `AA:BB:CC:DD:EE:FF`. |
 | `server.port` | Порт сервера (по умолчанию `8787`). Хост сервера = `pc.ip`. |
-| `lmstudio.api_port` | Порт локального API-сервера LM Studio (по умолчанию `4321`). После сохранения настроек клиент посылает его на сервер командой `set_lm_port` — сервер использует его для чтения загруженной модели. |
+| `lmstudio.api_port` | Порт локального API-сервера LM Studio (по умолчанию `1234`). После сохранения настроек клиент посылает его на сервер командой `set_lm_port` — сервер использует его для чтения загруженной модели. |
 | `auto_check.enabled` | Автопроверка состояния: вкл/выкл (по умолчанию вкл). |
 | `auto_check.interval_s` | Интервал автопроверки, в секундах (по умолчанию `10`). |
 

@@ -38,7 +38,7 @@ class SettingsDialog(QDialog):
         self.sport.setValue(int(cfg.get("server", {}).get("port", 8787)))
         self.lmport = QSpinBox()
         self.lmport.setRange(1, 65535)
-        self.lmport.setValue(int(cfg.get("lmstudio", {}).get("api_port", 4321)))
+        self.lmport.setValue(int(cfg.get("lmstudio", {}).get("api_port", 1234)))
         self.lmport.setToolTip(
             "Порт локального API-сервера LM Studio на управляемом ПК (серверная "
             "часть). Стандарт LM Studio — 1234. Сохраняется в конфиге сервера "

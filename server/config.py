@@ -24,8 +24,7 @@ DEFAULTS = {
         # Имя процесса для проверки/остановки. На Windows — с .exe.
         "process_name": "LM Studio.exe",
         # Порт локального API-сервера LM Studio (загруженные модели, /v1/models).
-        # Стандартный порт LM Studio — 1234; на целевом ПК настроен 4321.
-        "api_port": 4321,
+        "api_port": 1234,
     },
     "hibernate": {
         # "rundll32" -> rundll32.exe powrprof.dll,SetSuspendState 0,1,0
@@ -78,7 +77,7 @@ class Config:
     @property
     def lm_api_port(self) -> int:
         """Порт локального API-сервера LM Studio (загруженные модели)."""
-        return int(self.data["lmstudio"].get("api_port", 4321))
+        return int(self.data["lmstudio"].get("api_port", 1234))
 
     # --- гибернация ---
     @property

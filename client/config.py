@@ -5,7 +5,7 @@
     pc.mac            — MAC удалённого ПК (для Wake-on-LAN)
     server.port       — порт HTTP-сервера (хост сервера = pc.ip)
     lmstudio.api_port — порт локального API-сервера LM Studio на управляемом ПК
-                        (серверная часть; стандарт 1234, дефолт 4321)
+                        (серверная часть; стандарт LM Studio — 1234)
     auto_check.enabled    — автопроверка состояния: вкл/выкл
     auto_check.interval_s — интервал автопроверки, в секундах
 """
@@ -26,7 +26,7 @@ DEFAULTS = {
         "port": 8787,
     },
     "lmstudio": {
-        "api_port": 4321,
+        "api_port": 1234,
     },
     "auto_check": {
         "enabled": True,

@@ -19,7 +19,7 @@ def request(host: str, port: int, command: str, timeout: float = 5.0,
             args: dict | None = None) -> dict:
     """Выполняет команду на сервере и возвращает распарсенный JSON (ok=true).
 
-    args — дополнительные поля запроса (например {"port": 4321} для
+    args — дополнительные поля запроса (например {"port": 1234} для
     set_lm_port); идут в тело POST рядом с "command"."""
     host = (host or "").strip()
     if not host:
