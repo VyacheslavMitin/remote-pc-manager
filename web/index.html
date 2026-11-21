@@ -204,19 +204,6 @@ input::selection { background: var(--accent); color: #fff; }
 .dlgbtns { display: flex; justify-content: flex-end; gap: 10px; }
 .suffix { color: var(--muted); }
 
-/* ── Бейдж режима (демо/live) ─────────────────────────────────────────── */
-.mode-badge {
-  flex: none;
-  font-size: 11px; font-weight: 700; letter-spacing: .4px;
-  padding: 3px 8px; border-radius: 6px;
-  background: #2a2a2e; border: 1px solid var(--border);
-  color: var(--rowname);
-  cursor: pointer; user-select: none;
-}
-.mode-badge.demo { color: #ffd479; border-color: #6b5420; background: #2a2416; }
-.mode-badge.live { color: #7ee787; border-color: #26532c; background: #16281a; }
-.mode-badge:hover { border-color: var(--border-hi); }
-
 /* ── Тултипы (QToolTip) ───────────────────────────────────────────────── */
 [data-tip] { position: relative; }
 [data-tip]:hover::after {
@@ -237,10 +224,7 @@ input::selection { background: var(--accent); color: #fff; }
   <!-- Заголовок + шестерёнка (как в MainWindow) -->
   <div class="title-row">
     <span class="title">Управление удалённым ПК</span>
-    <div style="display:flex; gap:8px; align-items:center;">
-      <span id="modeBadge" class="mode-badge demo" title="Клик — переключить режим (демо ↔ live)">ДЕМО</span>
-      <button class="gear" id="btnSettings" data-tip="Настройки">⚙</button>
-    </div>
+    <button class="gear" id="btnSettings" data-tip="Настройки">⚙</button>
   </div>
 
   <!-- Блок «ПК» -->
@@ -316,9 +300,8 @@ input::selection { background: var(--accent); color: #fff; }
    - автопроверка каждые N сек (ping ПК + status к серверу);
    - жёлтая точка во время проверки;
    - заголовки блоков: «ПК (имя, ОС, аптайм)», «LM Studio (v…, модель, контекст)»;
-   - нижняя строка: «Автопроверка: включена, следующая в HH:MM:SS» / «выключена»;
-   - режим DEMO — имитация сервера (открывается где угодно, без сети);
-   - режим LIVE — реальные fetch в http://<ip>:<порт> (GET /status, POST /command).
+   - строка состояния: «Автопроверка: включена, следующая в HH:MM:SS» / «выключена»;
+   - команды — реальные fetch в http://<ip>:<порт> (GET /status, POST /command).
    Браузер не умеет ICMP/UDP: пинг ПК заменяется HTTP-доступностью сервера
    (сервер на той же машине), WoL в браузере не отправляется.
    ═════════════════════════════════════════════════════════════════════ */
@@ -333,7 +316,6 @@ let cfg = {
   auto_check: { enabled: true, interval_s: 10 },
 };
 
-let mode = "demo";                 // "demo" | "live"
 let autoEnabled = cfg.auto_check.enabled;
 let autoIntervalS = Math.max(1, cfg.auto_check.interval_s);
 let autoMode = false;              // разрешить авто-строке переписывать статус
@@ -341,18 +323,6 @@ let manualInflight = 0;
 let last = { pc: null, lm: null, t: null };
 let timerId = null;
 let tickDeadline = null;           // Date — когда будет следующий тик (для «следующая в …»)
-
-/* ── «мировой» демо-сервер (имитация машины с LM Studio) ─────────────── */
-const demoWorld = {
-  pcUp: true,
-  lmRunning: true,
-  version: "0.3.25",
-  model: "qwen2.5-7b-instruct",
-  context: 65536,
-  pcName: "DESKTOP-ABC123",
-  osName: "Windows 11",
-  bootAt: Date.now() - 123456 * 1000,
-};
 
 const $ = id => document.getElementById(id);
 
@@ -433,11 +403,9 @@ function refreshStatusLine() {
 function ipText() { return `IP: ${cfg.pc.ip}`; }
 function refreshIp() { $("ipLabel").textContent = ipText(); }
 
-/* ── транспорт: демо-имитация vs live-fetch ──────────────────────────── */
-const sleep = ms => new Promise(r => setTimeout(r, ms));
+/* ── транспорт: fetch к серверу на ПК ─────────────────────────────────── */
 
 async function pingPC() {
-  if (mode === "demo") { await sleep(250); return demoWorld.pcUp; }
   // в браузере нет ICMP: «жива машина» = отвечает её HTTP-сервер
   const t0 = Date.now();
   const r = await fetch(`${serverBase()}/status`, { mode: "cors" });
@@ -447,20 +415,6 @@ async function pingPC() {
 }
 
 async function apiStatus() {
-  if (mode === "demo") {
-    await sleep(350);
-    if (!demoWorld.pcUp) throw new Error("нет соединения с " + cfg.pc.ip);
-    return {
-      ok: true,
-      lmstudio_running: demoWorld.lmRunning,
-      lmstudio_version: demoWorld.lmRunning ? demoWorld.version : null,
-      lmstudio_model: demoWorld.lmRunning ? demoWorld.model : null,
-      lmstudio_context: demoWorld.lmRunning ? demoWorld.context : null,
-      pc_name: demoWorld.pcName,
-      os_name: demoWorld.osName,
-      uptime_s: Math.floor((Date.now() - demoWorld.bootAt) / 1000),
-    };
-  }
   const r = await fetch(`${serverBase()}/status`, { mode: "cors" });
   const body = await r.text().catch(() => "");
   let obj = null;
@@ -472,31 +426,6 @@ async function apiStatus() {
 }
 
 async function apiCommand(command, args = {}, timeoutMs = 6000) {
-  if (mode === "demo") {
-    await sleep(400);
-    if (!demoWorld.pcUp) throw new Error("нет соединения с " + cfg.pc.ip);
-    switch (command) {
-      case "hibernate":
-        demoWorld.pcUp = false;
-        return { ok: true, note: "гибернация запущена" };
-      case "start_lmstudio":
-        demoWorld.lmRunning = true;
-        demoWorld.pcUp = true; // «включил ПК» для наглядности
-        return { ok: true, pid: 4242 };
-      case "stop_lmstudio": {
-        const was = demoWorld.lmRunning;
-        demoWorld.lmRunning = false;
-        return was ? { ok: true, killed: "LM Studio.exe" }
-                   : { ok: true, killed: null, note: "не была запущена" };
-      }
-      case "set_lm_port":
-        return { ok: true, lmstudio_api_port: args.port };
-      case "status":
-        return apiStatus();
-      default:
-        throw new Error(`неизвестная команда: ${command}`);
-    }
-  }
   const r = await fetch(`${serverBase()}/command`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -625,10 +554,6 @@ async function onCheckLM() {
 
 async function onWol() {
   const mac = cfg.pc.mac;
-  if (mode === "demo") {
-    msg(`⚠ WoL недоступен в браузере (нужен desktop-клиент; magic packet → ${mac}, ×3 — имитация отправлена)`);
-    return;
-  }
   beginManual();
   msg(`Отправляю magic packet → ${mac} …`);
   try {
@@ -749,23 +674,9 @@ function saveSettings() {
   closeSettings();
   msg("⚙ Настройки сохранены.");
   // порт LM Studio на сервер (как _push_lm_port в app.py)
-  if (mode === "live") {
-    apiCommand("set_lm_port", { port: lmPort }, 6000)
-      .then(res => msg(`⚙ Порт LM Studio применён на сервере: ${res.lmstudio_api_port || lmPort}.`))
-      .catch(e => msg(`⚙ Порт LM Studio сохранён локально (${lmPort}), но применить на сервере не удалось: ${e.message}.`));
-  }
-}
-
-/* ── переключение режима ─────────────────────────────────────────────── */
-function setMode(m) {
-  mode = m;
-  const badge = $("modeBadge");
-  badge.textContent = m.toUpperCase();
-  badge.className = "mode-badge " + m;
-  msg(m === "demo"
-    ? "Демо-режим: ответы имитируются, сеть не используется."
-    : `Live-режим: команды идут в ${serverBase()}.`);
-  if (autoEnabled) autoTick();
+  apiCommand("set_lm_port", { port: lmPort }, 6000)
+    .then(res => msg(`⚙ Порт LM Studio применён на сервере: ${res.lmstudio_api_port || lmPort}.`))
+    .catch(e => msg(`⚙ Порт LM Studio сохранён локально (${lmPort}), но применить на сервере не удалось: ${e.message}.`));
 }
 
 /* ── привязка событий ────────────────────────────────────────────────── */
@@ -778,14 +689,13 @@ $("btnStopLM").onclick = onStopLM;
 $("btnSettings").onclick = openSettings;
 $("btnCancel").onclick = closeSettings;
 $("btnSave").onclick = saveSettings;
-$("modeBadge").onclick = () => setMode(mode === "demo" ? "live" : "demo");
 $("btnHowto").onclick = () => alert("IP и MAC компьютера — на Windows: ipconfig /all.");
 $("overlay").addEventListener("click", e => { if (e.target === $("overlay")) closeSettings(); });
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeSettings(); });
 
 /* ── загрузка настроек (как у desktop-клиента) ─────────────────────────
    приоритет: 1) сохранённые вручную (localStorage)  2) config.json
-   3) дефолты (демо). Реальные IP/порты живут в config.json, не в коде. */
+   3) дефолты. Реальные IP/порты живут в config.json, не в коде. */
 function applyCfg(c) {
   if (!c) return;
   if (c.pc && c.pc.ip) cfg.pc.ip = String(c.pc.ip);
@@ -812,7 +722,7 @@ async function loadConfig() {
       if (r.ok) { const c = await r.json(); if (c && (c.pc || c.server)) { applyCfg(c); startAuto(); msg("Загружены настройки из config.json."); return; } }
     } catch (e) { /* пробуем следующий путь */ }
   }
-  startAuto(); // дефолты (демо)
+  startAuto(); // дефолты
 }
 
 /* ── старт ───────────────────────────────────────────────────────────── */
