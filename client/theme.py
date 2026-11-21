@@ -61,7 +61,9 @@ QSpinBox::up-button, QSpinBox::down-button { background: #2a2a2e; }
 QMessageBox, QDialog { background-color: #202024; }
 QToolTip { background-color: #2c2c31; color: #e6e6e6; border: 1px solid #3a3a40; padding: 4px 6px; }
 
-QFrame#card { background-color: #242428; border: 1px solid #303036; border-radius: 10px; }
+QFrame#block { background-color: #232327; border: 1px solid #34343a; border-radius: 12px; }
+QLabel#section { font-size: 14px; font-weight: 700; color: #f2f2f4; padding: 2px 2px 0px 2px; }
+QFrame#card { background-color: #2a2a30; border: 1px solid #3a3a40; border-radius: 10px; }
 """
 
 

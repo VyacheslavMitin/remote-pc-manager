@@ -6,7 +6,10 @@
 индикатора «Сервер» нет.
 Включение автопроверки и её интервал настраиваются только в «⚙ Настройки».
 Пока идёт проверка, индикатор строки жёлтый.
-Раскладка: шестерёнка настроек — в верхнем правом углу (только значок);
+Раскладка: главное окно разделено на два блока — «ПК» и «LM Studio»;
+в каждом блоке строка проверки состояния (индикатор + «Проверить»)
+сверху, под ней — кнопки действий.
+Шестерёнка настроек — в верхнем правом углу (только значок);
 внизу слева — строка состояния автопроверки (вкл/выкл + время следующей
 проверки), внизу справа — «IP: <адрес управляемого ПК>» (из настроек).
 """
@@ -25,6 +28,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QMainWindow,
     QWidget,
+    QFrame,
     QVBoxLayout,
     QHBoxLayout,
     QPushButton,
@@ -113,7 +117,10 @@ class MainWindow(QMainWindow):
         title_row.addWidget(self.btn_settings)
         root.addLayout(title_row)
 
-        # 1. Питание ПК: пробуждение + гибернация в одну строку
+        # ── Блок «ПК» ── проверка состояния сверху, затем действия
+        block_pc, pc = self._block("ПК")
+        self.row_pc = StatusRow("Состояние", self.on_check_pc)
+        pc.addWidget(self.row_pc)
         power = QHBoxLayout()
         power.setSpacing(10)
         self.btn_wol = QPushButton("⏻  Пробудить ПК")
@@ -124,13 +131,13 @@ class MainWindow(QMainWindow):
         self.btn_hib = QPushButton("🌙  Гибернация")
         self.btn_hib.clicked.connect(self.on_hibernate)
         power.addWidget(self.btn_hib, 2)
-        root.addLayout(power)
+        pc.addLayout(power)
+        root.addWidget(block_pc)
 
-        # 2. Состояние ПК — единственный индикатор «машина жива» (сервер — та же машина)
-        self.row_pc = StatusRow("ПК", self.on_check_pc)
-        root.addWidget(self.row_pc)
-
-        # 3/4. Управление LM Studio — в одну строку
+        # ── Блок «LM Studio» ── проверка состояния сверху, затем действия
+        block_lm, lmb = self._block("LM Studio")
+        self.row_lm = StatusRow("Состояние", self.on_check_lm)
+        lmb.addWidget(self.row_lm)
         lm = QHBoxLayout()
         lm.setSpacing(10)
         self.btn_start = QPushButton("▶  Включить LM Studio")
@@ -141,11 +148,8 @@ class MainWindow(QMainWindow):
         self.btn_stop.setObjectName("danger")
         self.btn_stop.clicked.connect(self.on_stop_lm)
         lm.addWidget(self.btn_stop, 1)
-        root.addLayout(lm)
-
-        # 5. Состояние LM Studio (берётся из status-запроса к серверу)
-        self.row_lm = StatusRow("LM Studio", self.on_check_lm)
-        root.addWidget(self.row_lm)
+        lmb.addLayout(lm)
+        root.addWidget(block_lm)
 
         root.addStretch(1)
 
@@ -225,6 +229,21 @@ class MainWindow(QMainWindow):
         """Текст метки IP внизу справа — один формат в обоих местах
         (при создании и после сохранения настроек)."""
         return f"IP: {self.cfg['pc']['ip']}"
+
+    def _block(self, title: str) -> tuple[QFrame, QVBoxLayout]:
+        """Собирает блок-панель: заголовок секции + внутренний layout.
+
+        Возвращает (frame, inner_layout) — содержимое (проверка, кнопки)
+        добавляется в inner_layout в нужном порядке."""
+        frame = QFrame()
+        frame.setObjectName("block")
+        v = QVBoxLayout(frame)
+        v.setContentsMargins(14, 12, 14, 14)
+        v.setSpacing(10)
+        h = QLabel(title)
+        h.setObjectName("section")
+        v.addWidget(h)
+        return frame, v
 
     def _server(self):
         # Сервер = тот же ПК: хост берём из pc.ip
