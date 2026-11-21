@@ -176,7 +176,7 @@ curl -X POST http://<IP_Винды>:8787/command -H "Content-Type: application/j
 
 | Команда | Ответ |
 |---|---|
-| `status` | `{"ok": true, "command": "status", "lmstudio_running": bool, "lmstudio_version": str\|null, "lmstudio_model": str\|null, "pc_name": str, "os_name": str, "uptime_s": int\|null}` — сам ответ подтверждает доступность сервера; `pc_name` — имя ПК (hostname), `os_name` — ОС сервера (напр. «Windows 11»), `uptime_s` — секунд с момента запуска системы; `lmstudio_version` — версия установленной LM Studio (`VersionInfo.ProductVersion` exe, кэшируется сервером до смены mtime файла); `lmstudio_model` — id загруженной модели (локальный API-сервер LM Studio, `GET http://127.0.0.1:<api_port>/v1/models`; `null`, если API не запущен или моделей нет) — клиент показывает оба поля в заголовке блока («LM Studio (v0.3.25, модель: …)»); если версия/модель неизвестны, заголовок — просто «LM Studio». Аптайм форматируется без секунд («3 ч 14 мин»). |
+| `status` | `{"ok": true, "command": "status", "lmstudio_running": bool, "lmstudio_version": str\|null, "lmstudio_model": str\|null, "pc_name": str, "os_name": str, "uptime_s": int\|null}` — сам ответ подтверждает доступность сервера; `pc_name` — имя ПК (hostname), `os_name` — ОС сервера (напр. «Windows 11»), `uptime_s` — секунд с момента запуска системы; `lmstudio_version` — версия установленной LM Studio (`VersionInfo.ProductVersion` exe, кэшируется сервером до смены mtime файла); `lmstudio_model` — id основной загруженной модели (если моделей несколько — первая в списке; напр. embedding-модели в заголовок не попадают) (локальный API-сервер LM Studio, `GET http://127.0.0.1:<api_port>/v1/models`; `null`, если API не запущен или моделей нет) — клиент показывает оба поля в заголовке блока («LM Studio (v0.3.25, qwen2.5-7b-instruct)»); если версия/модель неизвестны, заголовок — просто «LM Studio». Аптайм форматируется без секунд («3 ч 14 мин»). |
 | `hibernate` | `{"ok": true, "command": "hibernate", "note": "гибернация запущена"}` — ответ уходит, **потом** машина уходит в гибернацию. |
 | `start_lmstudio` | `{"ok": true, "command": "start_lmstudio", "pid": int, "exe": "..."}` |
 | `stop_lmstudio` | `{"ok": true, "command": "stop_lmstudio", "killed": "LM Studio.exe"}` (или `"killed": null` + `note`, если не было запущено) |
@@ -269,7 +269,7 @@ sh start/build_app.sh   # собрать/пересобрать .app-бандл
 | **Статус ПК** + *Проверить* | 🟡 проверка / 🟢 в сети / 🔴 не отвечает — ping по `pc.ip` (единственный индикатор «машина жива» — сервер на той же машине). |
 | **▶ Включить LM Studio** | Команда `start_lmstudio`. |
 | **⏹ Выключить LM Studio** | Команда `stop_lmstudio`. |
-| **Состояние LM Studio** + *Проверить состояние* | 🟡 проверка / 🟢 запущена / 🔴 не запущена — состояние показывает индикатор; заголовок блока — версия и модель («LM Studio (v0.3.25, модель: …)»), при простое — просто «LM Studio». |
+| **Состояние LM Studio** + *Проверить состояние* | 🟡 проверка / 🟢 запущена / 🔴 не запущена — состояние показывает индикатор; заголовок блока — версия и модель («LM Studio (v0.3.25, qwen2.5-7b-instruct)»), при простое — просто «LM Studio». |
 | **⚙ (верхний правый угол, только значок)** | Диалог настроек: IP, MAC, порт сервера, порт API LM Studio, автопроверка (вкл/выкл, интервал в секундах) → сохранение в `config.json` (порт LM Studio дополнительно применяется на сервере через `set_lm_port`). |
 | **IP в правом нижнем углу** | IP управляемого ПК из настроек — на одной строке со строкой статуса (статус слева, IP справа); обновляется после сохранения настроек. |
 
@@ -289,8 +289,8 @@ GUI не «зависает». Ошибки показываются в стро
 - **LM Studio** — один `status`-запрос к серверу (хост = `pc.ip`)
   (из него заполняется индикатор: 🟢 запущена / 🔴 не запущена, а заголовок
   блока — версия LM Studio на ПК и загруженная модель:
-  «LM Studio (v0.3.25, модель: qwen2.5-7b-instruct)»; модель сервер берёт
-  из локального API-сервера LM Studio, `GET /v1/models`, порт — из конфига
+  «LM Studio (v0.3.25, qwen2.5-7b-instruct)»; модель — первый id из списка
+  локального API-сервера LM Studio (`GET /v1/models`), порт — из конфига
   `lmstudio.api_port`).
   Если сервер недоступен, LM Studio показывается ⚪ «нет данных» —
   без лишнего второго запроса.

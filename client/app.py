@@ -17,12 +17,13 @@
 внизу слева — строка состояния автопроверки (вкл/выкл + время следующей
 проверки), внизу справа — «IP: <адрес управляемого ПК>» (из настроек).
 Заголовок блока «LM Studio» — версия LM Studio на целевом ПК и
-загруженная модель: «LM Studio (v0.3.25, модель: qwen2.5-7b-instruct)»,
-если сервер прислал lmstudio_version / lmstudio_model (модель — из
-локального API-сервера LM Studio, GET /v1/models); показывается только
-то, что прислал. Если ничего неизвестно (старый сервер или сервер
-недоступен) — просто «LM Studio»; состояние (запущена/не запущена)
-показывает индикатор-точка.
+загруженная модель: «LM Studio (v0.3.25, qwen2.5-7b-instruct)»,
+если сервер прислал lmstudio_version / lmstudio_model (модель —
+первый id из локального API-сервера LM Studio, GET /v1/models;
+остальные, например embedding-модели, в заголовок не идут);
+показывается только то, что прислал. Если ничего неизвестно
+(старый сервер или сервер недоступен) — просто «LM Studio»;
+состояние (запущена/не запущена) показывает индикатор-точка.
 """
 from __future__ import annotations
 
@@ -295,7 +296,7 @@ class MainWindow(QMainWindow):
     ) -> None:
         """Заголовок блока «LM Studio» — версия и загруженная модель на ПК:
 
-        «LM Studio (v0.3.25, модель: qwen2.5-7b-instruct)», если сервер
+        «LM Studio (v0.3.25, qwen2.5-7b-instruct)», если сервер
         прислал lmstudio_version / lmstudio_model; только то, что прислал
         (версия без модели, модель без версии). Если ничего неизвестно
         (старый сервер или сервер недоступен) — просто «LM Studio»;
@@ -308,7 +309,7 @@ class MainWindow(QMainWindow):
             parts.append(v)
         m = (model or "").strip()
         if m:
-            parts.append(f"модель: {m}")
+            parts.append(m)
         if parts:
             self.title_lm.setText(f"LM Studio ({', '.join(parts)})")
         else:
