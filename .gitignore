@@ -14,6 +14,9 @@ server/config.json
 *.log
 logs/
 
+# PID файла фонового запуска (server/start_background.py)
+server/server.pid
+
 # macOS
 .DS_Store
 
