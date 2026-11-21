@@ -39,28 +39,6 @@ class Handler(BaseHTTPRequestHandler):
             raise RuntimeError("сервер не инициализирован")
         return self.cfg
 
-    @staticmethod
-    def _decode_body(raw: bytes) -> str:
-        """Декодировать тело запроса.
-
-        Клиент всегда шлёт utf-8 (json.dumps(...).encode("utf-8")). Fallback
-        на cp866 — для ручных проверок из консоли Windows: на русской
-        системе cmd/PowerShell кодируют тело в кодовую страницу консоли
-        (OEM 866), и кириллица приходит не-utf-8 байтами — раньше это давало
-        UnicodeDecodeError в ответе. cp866 в CPython декодирует все 256
-        байтов, так что на этом этапе ошибка исключена; если тело и в итоге
-        не JSON — сервер ответит обычной 400 с текстом ошибки json.loads.
-        """
-        try:
-            return raw.decode("utf-8")
-        except UnicodeDecodeError:
-            pass
-        try:
-            return raw.decode("cp866")
-        except UnicodeDecodeError:  # защитно: cp866 декодирует все байты
-            pass
-        return raw.decode("utf-8", "replace")
-
     # ---------- HTTP ----------
     def do_GET(self) -> None:  # noqa: N802
         path = self.path.split("?", 1)[0].rstrip("/") or "/"
@@ -82,14 +60,11 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             length = 0
         raw = self.rfile.read(length) if length > 0 else b""
-        if raw:
-            try:
-                payload = json.loads(self._decode_body(raw))
-            except Exception as exc:
-                self._send_json(400, {"ok": False, "error": f"тело не является JSON: {exc}"})
-                return
-        else:
-            payload = {}
+        try:
+            payload = json.loads(raw.decode("utf-8")) if raw else {}
+        except Exception as exc:
+            self._send_json(400, {"ok": False, "error": f"тело не является JSON: {exc}"})
+            return
         if not isinstance(payload, dict):
             self._send_json(400, {"ok": False, "error": "ожидается объект JSON"})
             return
