@@ -15,8 +15,8 @@ QLabel#dot { font-size: 15px; }
 QPushButton#gear {
     background-color: transparent;
     border: none;
-    border-radius: 8px;
-    font-size: 18px;
+    border-radius: 10px;
+    font-size: 27px;
     color: #cfcfd4;
     padding: 0px;
 }

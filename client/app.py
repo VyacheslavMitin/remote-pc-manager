@@ -7,7 +7,7 @@
 Включение автопроверки и её интервал настраиваются только в «⚙ Настройки».
 Пока идёт проверка, индикатор строки жёлтый.
 Раскладка: шестерёнка настроек — в верхнем правом углу (только значок);
-внизу окна — IP управляемого ПК (из настроек).
+внизу справа (в одну строку со статусом) — IP управляемого ПК (из настроек).
 """
 from __future__ import annotations
 
@@ -105,7 +105,7 @@ class MainWindow(QMainWindow):
         title_row.addStretch(1)
         self.btn_settings = QPushButton("⚙")
         self.btn_settings.setObjectName("gear")
-        self.btn_settings.setFixedSize(34, 34)
+        self.btn_settings.setFixedSize(51, 51)
         self.btn_settings.setCursor(Qt.PointingHandCursor)
         self.btn_settings.setToolTip("Настройки")
         self.btn_settings.clicked.connect(self.on_settings)
@@ -148,18 +148,22 @@ class MainWindow(QMainWindow):
 
         root.addStretch(1)
 
-        # 6. IP управляемого ПК (из настроек)
-        self.lbl_ip = QLabel(self.cfg["pc"]["ip"])
-        self.lbl_ip.setObjectName("ip")
-        self.lbl_ip.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.lbl_ip.setToolTip("IP управляемого ПК (из ⚙ Настроек)")
-        root.addWidget(self.lbl_ip)
-
+        # 6. Нижняя строка: статус слева, IP управляемого ПК (из настроек) справа
+        bottom = QHBoxLayout()
+        bottom.setContentsMargins(0, 0, 0, 0)
+        bottom.setSpacing(12)
         self.status = QLabel("Готов.")
         self.status.setObjectName("status")
         self.status.setWordWrap(True)
         self.status.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        root.addWidget(self.status)
+        bottom.addWidget(self.status, 1)
+        self.lbl_ip = QLabel(self.cfg["pc"]["ip"])
+        self.lbl_ip.setObjectName("ip")
+        self.lbl_ip.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.lbl_ip.setToolTip("IP управляемого ПК (из ⚙ Настроек)")
+        self.lbl_ip.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        bottom.addWidget(self.lbl_ip)
+        root.addLayout(bottom)
 
         # Автопроверка: каждые N секунд (N — из настроек)
         self._timer = QTimer(self)
