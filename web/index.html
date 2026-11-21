@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Удалённый ПК">
+<title>Удалённый ПК — менеджер</title>
+<style>
+/* ── Тёмная тема: точные цвета из client/theme.py ─────────────────────── */
+:root {
+  --bg:        #1e1e20;
+  --bg2:       #242428;
+  --text:      #e6e6e6;
+  --muted:     #9a9aa2;
+  --rowname:   #cfcfd4;
+  --title:     #f2f2f4;
+  --border:    #3a3a40;
+  --border-hi: #4a4a52;
+  --block-bg:  #232327;
+  --block-br:  #34343a;
+  --card-bg:   #2a2a30;
+  --btn-bg:    #2a2a2e;
+  --btn-hov:   #333338;
+  --btn-press: #242428;
+  --btn-dis:   #6f6f76;
+  --btn-disbg: #232327;
+  --btn-disbr: #2c2c31;
+  --input-bg:  #222226;
+  --accent:    #1f6feb;
+  --accent-br: #2f81f7;
+  --accent-hov:#2f81f7;
+  --accent-prs:#1859c7;
+  --ok-bg:     #1a7f37;
+  --ok-br:     #238636;
+  --ok-hov:    #238636;
+  --ok-prs:    #156429;
+  --bad-bg:    #b62324;
+  --bad-br:    #da3633;
+  --bad-hov:   #da3633;
+  --bad-prs:   #971c1c;
+  --dlg-bg:    #202024;
+  --tip-bg:    #2c2c31;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  background: #121214;
+  color: var(--text);
+  font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 28px 16px;
+}
+
+/* ── Окно (аналог QMainWindow, min 440×340, отступы 16, шаг 10) ──────── */
+.window {
+  width: 100%;
+  max-width: 560px;
+  min-width: 440px;
+  min-height: 340px;
+  background: var(--bg);
+  border: 1px solid var(--block-br);
+  border-radius: 14px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 18px 60px rgba(0,0,0,.55);
+}
+
+/* ── Заголовок + шестерёнка ───────────────────────────────────────────── */
+.title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.title { font-size: 17px; font-weight: 700; color: var(--title); }
+.gear {
+  width: 51px; height: 51px;
+  display: grid; place-items: center;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 27px;
+  color: var(--rowname);
+  cursor: pointer;
+  transition: background .12s, border-color .12s, color .12s;
+  flex: none;
+}
+.gear:hover { background: var(--btn-hov); border-color: var(--border-hi); color: #fff; }
+.gear:active { background: #1e1e22; border-color: var(--border-hi); }
+
+/* ── Блоки «ПК» / «LM Studio» (QFrame#block) ──────────────────────────── */
+.block {
+  background: var(--block-bg);
+  border: 1px solid var(--block-br);
+  border-radius: 12px;
+  padding: 12px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.section { font-size: 14px; font-weight: 700; color: var(--title); padding: 2px 2px 0; }
+
+/* ── Строка состояния (QFrame#card) ───────────────────────────────────── */
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.rowname { color: var(--rowname); font-weight: 600; min-width: 96px; }
+.dot { font-size: 15px; line-height: 1; flex: none; }
+.card .spacer { flex: 1; }
+
+/* ── Кнопки (QPushButton) ─────────────────────────────────────────────── */
+button {
+  font: inherit;
+  background: var(--btn-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 14px;
+  cursor: pointer;
+  transition: background .12s, border-color .12s;
+  white-space: nowrap;
+}
+button:hover { background: var(--btn-hov); border-color: var(--border-hi); }
+button:active { background: var(--btn-press); }
+button:disabled {
+  color: var(--btn-dis);
+  background: var(--btn-disbg);
+  border-color: var(--btn-disbr);
+  cursor: default;
+}
+.btn-primary { background: var(--accent); border-color: var(--accent-br); color: #fff; font-weight: 600; }
+.btn-primary:hover { background: var(--accent-hov); }
+.btn-primary:active { background: var(--accent-prs); }
+.btn-success { background: var(--ok-bg); border-color: var(--ok-br); color: #fff; }
+.btn-success:hover { background: var(--ok-hov); }
+.btn-success:active { background: var(--ok-prs); }
+.btn-danger { background: var(--bad-bg); border-color: var(--bad-br); color: #fff; }
+.btn-danger:hover { background: var(--bad-hov); }
+.btn-danger:active { background: var(--bad-prs); }
+
+.row { display: flex; gap: 10px; }
+.row .grow3 { flex: 3 1 0; }
+.row .grow2 { flex: 2 1 0; }
+.row .grow1 { flex: 1 1 0; }
+
+/* ── Нижняя строка: статус слева, IP справа ───────────────────────────── */
+.bottom { display: flex; align-items: center; gap: 12px; min-height: 18px; }
+.status { color: var(--muted); font-size: 12px; flex: 1; word-break: break-word; }
+.ip { color: var(--muted); font-size: 12px; flex: none; user-select: text; }
+
+/* ── Модалка (QDialog) ────────────────────────────────────────────────── */
+.overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.55);
+  display: none;
+  align-items: center; justify-content: center;
+  z-index: 10;
+}
+.overlay.open { display: flex; }
+.dialog {
+  background: var(--dlg-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  min-width: 440px;
+  width: min(520px, calc(100vw - 32px));
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 24px 80px rgba(0,0,0,.6);
+}
+.dialog h2 { font-size: 15px; font-weight: 700; color: var(--title); }
+.form { display: flex; flex-direction: column; gap: 10px; }
+.form .frow { display: flex; align-items: center; gap: 10px; }
+.form label { flex: 0 0 150px; color: var(--rowname); font-weight: 600; }
+input[type="text"], input[type="number"] {
+  flex: 1;
+  font: inherit;
+  background: var(--input-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+input:focus { outline: none; border-color: var(--accent-hov); }
+input::selection { background: var(--accent); color: #fff; }
+.checkrow { display: flex; align-items: center; gap: 8px; color: var(--text); }
+.checkrow input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent-hov); }
+.hint {
+  background: none; border: none; padding: 0;
+  color: #8ab4ff; font-weight: 400;
+  text-align: left;
+}
+.hint:hover { background: none; border-color: transparent; text-decoration: underline; }
+.dlgbtns { display: flex; justify-content: flex-end; gap: 10px; }
+.suffix { color: var(--muted); }
+
+/* ── Бейдж режима (демо/live) ─────────────────────────────────────────── */
+.mode-badge {
+  flex: none;
+  font-size: 11px; font-weight: 700; letter-spacing: .4px;
+  padding: 3px 8px; border-radius: 6px;
+  background: #2a2a2e; border: 1px solid var(--border);
+  color: var(--rowname);
+  cursor: pointer; user-select: none;
+}
+.mode-badge.demo { color: #ffd479; border-color: #6b5420; background: #2a2416; }
+.mode-badge.live { color: #7ee787; border-color: #26532c; background: #16281a; }
+.mode-badge:hover { border-color: var(--border-hi); }
+
+/* ── Тултипы (QToolTip) ───────────────────────────────────────────────── */
+[data-tip] { position: relative; }
+[data-tip]:hover::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+  background: var(--tip-bg); color: var(--text);
+  border: 1px solid var(--border);
+  padding: 4px 6px; border-radius: 4px;
+  font-size: 12px; font-weight: 400; white-space: nowrap;
+  z-index: 20; pointer-events: none;
+}
+</style>
+</head>
+<body>
+
+<div class="window">
+  <!-- Заголовок + шестерёнка (как в MainWindow) -->
+  <div class="title-row">
+    <span class="title">Управление удалённым ПК</span>
+    <div style="display:flex; gap:8px; align-items:center;">
+      <span id="modeBadge" class="mode-badge demo" title="Клик — переключить режим (демо ↔ live)">ДЕМО</span>
+      <button class="gear" id="btnSettings" data-tip="Настройки">⚙</button>
+    </div>
+  </div>
+
+  <!-- Блок «ПК» -->
+  <div class="block">
+    <div class="section" id="titlePC">ПК</div>
+    <div class="card">
+      <span class="rowname">Состояние</span>
+      <span class="dot" id="dotPC" data-tip="не проверено">⚪</span>
+      <span class="spacer"></span>
+      <button id="btnCheckPC">Проверить</button>
+    </div>
+    <div class="row">
+      <button class="btn-primary grow3" id="btnWol" data-tip="Отправить magic packet (Wake-on-LAN)">⏻&nbsp; Пробудить ПК</button>
+      <button class="grow2" id="btnHib">🌙&nbsp; Гибернация</button>
+    </div>
+  </div>
+
+  <!-- Блок «LM Studio» -->
+  <div class="block">
+    <div class="section" id="titleLM">LM Studio</div>
+    <div class="card">
+      <span class="rowname">Состояние</span>
+      <span class="dot" id="dotLM" data-tip="не проверено">⚪</span>
+      <span class="spacer"></span>
+      <button id="btnCheckLM">Проверить</button>
+    </div>
+    <div class="row">
+      <button class="btn-success grow1" id="btnStartLM">▶&nbsp; Включить LM Studio</button>
+      <button class="btn-danger grow1" id="btnStopLM">⏹&nbsp; Выключить LM Studio</button>
+    </div>
+  </div>
+
+  <div style="flex:1;"></div>
+
+  <!-- Низ: статус + IP -->
+  <div class="bottom">
+    <span class="status" id="statusLine">Готов.</span>
+    <span class="ip" id="ipLabel" data-tip="IP управляемого ПК (из ⚙ Настроек)">IP: —</span>
+  </div>
+</div>
+
+<!-- Диалог настроек (аналог SettingsDialog) -->
+<div class="overlay" id="overlay">
+  <div class="dialog">
+    <h2>Настройки</h2>
+    <div class="form">
+      <div class="frow"><label>IP компьютера</label><input type="text" id="sIp" spellcheck="false"></div>
+      <div class="frow"><label>MAC (Wake-on-LAN)</label><input type="text" id="sMac" spellcheck="false"></div>
+      <div class="frow"><label>Порт сервера</label><input type="number" id="sPort" min="1" max="65535"></div>
+      <div class="frow"><label>Порт API LM Studio</label><input type="number" id="sLmPort" min="1" max="65535" data-tip="Порт локального API-сервера LM Studio на управляемом ПК. Стандарт — 1234."></div>
+    </div>
+    <div class="form">
+      <div class="frow"><label></label>
+        <div class="checkrow"><input type="checkbox" id="sAuto"><span>Автопроверка состояния</span></div>
+      </div>
+      <div class="frow"><label>Интервал проверки</label>
+        <input type="number" id="sInterval" min="1" max="3600" style="max-width:120px">
+        <span class="suffix">сек</span>
+      </div>
+    </div>
+    <button class="hint" id="btnHowto">ℹ&nbsp; Как узнать IP и MAC?</button>
+    <div class="dlgbtns">
+      <button id="btnCancel">Отмена</button>
+      <button class="btn-primary" id="btnSave">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ═══════════════════════════════════════════════════════════════════════
+   Логика повторяет client/app.py:
+   - автопроверка каждые N сек (ping ПК + status к серверу);
+   - жёлтая точка во время проверки;
+   - заголовки блоков: «ПК (имя, ОС, аптайм)», «LM Studio (v…, модель, контекст)»;
+   - нижняя строка: «Автопроверка: включена, следующая в HH:MM:SS» / «выключена»;
+   - режим DEMO — имитация сервера (открывается где угодно, без сети);
+   - режим LIVE — реальные fetch в http://<ip>:<порт> (GET /status, POST /command).
+   Браузер не умеет ICMP/UDP: пинг ПК заменяется HTTP-доступностью сервера
+   (сервер на той же машине), WoL в браузере не отправляется.
+   ═════════════════════════════════════════════════════════════════════ */
+
+const DEFAULT_PC_OS = "Windows 11";
+
+/* ── конфиг (по умолчанию — как config.example.json) ─────────────────── */
+let cfg = {
+  pc:      { ip: "192.168.1.100", mac: "AA:BB:CC:DD:EE:FF" },
+  server:  { port: 8787 },
+  lmstudio:{ api_port: 1234 },
+  auto_check: { enabled: true, interval_s: 10 },
+};
+
+let mode = "demo";                 // "demo" | "live"
+let autoEnabled = cfg.auto_check.enabled;
+let autoIntervalS = Math.max(1, cfg.auto_check.interval_s);
+let autoMode = false;              // разрешить авто-строке переписывать статус
+let manualInflight = 0;
+let last = { pc: null, lm: null, t: null };
+let timerId = null;
+let tickDeadline = null;           // Date — когда будет следующий тик (для «следующая в …»)
+
+/* ── «мировой» демо-сервер (имитация машины с LM Studio) ─────────────── */
+const demoWorld = {
+  pcUp: true,
+  lmRunning: true,
+  version: "0.3.25",
+  model: "qwen2.5-7b-instruct",
+  context: 65536,
+  pcName: "DESKTOP-ABC123",
+  osName: "Windows 11",
+  bootAt: Date.now() - 123456 * 1000,
+};
+
+const $ = id => document.getElementById(id);
+
+/* ── утилиты форматирования (дословно из app.py) ─────────────────────── */
+function formatUptime(total) {
+  total = Math.max(0, parseInt(total, 10) || 0);
+  if (total < 60) return "меньше минуты";
+  const parts = [];
+  let rest = total;
+  for (const [div, unit] of [[86400, "д"], [3600, "ч"], [60, "мин"]]) {
+    const v = Math.floor(rest / div);
+    if (v) parts.push(`${v} ${unit}`);
+    rest %= div;
+    if (parts.length === 2) break;
+  }
+  return parts.join(" ") || "меньше минуты";
+}
+
+function formatContext(tokens) {
+  if (tokens === null || tokens === undefined) return "";
+  const v = parseInt(tokens, 10);
+  if (!Number.isFinite(v) || v <= 0) return "";
+  if (v % 1024 === 0) return `${v / 1024}K`;
+  return String(v);
+}
+
+/* ── индикаторы ───────────────────────────────────────────────────────── */
+function setDot(el, ok, tip) {
+  el.textContent = ok === null || ok === undefined ? "⚪" : (ok ? "🟢" : "🔴");
+  el.dataset.tip = tip || "";
+}
+function setChecking(el) {
+  el.textContent = "🟡";
+  el.dataset.tip = "проверка…";
+}
+
+/* ── заголовки блоков (дословно из app.py) ───────────────────────────── */
+function setPcTitle(name, osName, uptimeS) {
+  name = (name || "").trim();
+  if (!name) { $("titlePC").textContent = "ПК"; return; }
+  const parts = [name];
+  parts.push((osName || "").trim() || DEFAULT_PC_OS);
+  if (uptimeS !== null && uptimeS !== undefined) parts.push(formatUptime(uptimeS));
+  $("titlePC").textContent = `ПК (${parts.join(", ")})`;
+}
+
+function setLmTitle(version, model, context) {
+  const parts = [];
+  let v = (version || "").trim();
+  if (v) { if (!v.toLowerCase().startsWith("v")) v = `v${v}`; parts.push(v); }
+  const m = (model || "").trim();
+  if (m) parts.push(m);
+  const ctx = formatContext(context);
+  if (ctx) parts.push(ctx);
+  $("titleLM").textContent = parts.length ? `LM Studio (${parts.join(", ")})` : "LM Studio";
+}
+
+/* ── строка статуса ───────────────────────────────────────────────────── */
+function msg(text) {
+  autoMode = false;
+  $("statusLine").textContent = text;
+}
+function autoLine() {
+  if (!autoEnabled) return "Автопроверка: выключена";
+  if (timerId !== null && tickDeadline) {
+    const remainingS = Math.max(0, Math.floor((tickDeadline - Date.now()) / 1000));
+    const d = new Date(Date.now() + remainingS * 1000);
+    const pad = n => String(n).padStart(2, "0");
+    return `Автопроверка: включена, следующая в ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  }
+  return "Автопроверка: включена";
+}
+function refreshStatusLine() {
+  if (!autoMode) return;
+  const line = autoLine();
+  if ($("statusLine").textContent !== line) $("statusLine").textContent = line;
+}
+function ipText() { return `IP: ${cfg.pc.ip}`; }
+function refreshIp() { $("ipLabel").textContent = ipText(); }
+
+/* ── транспорт: демо-имитация vs live-fetch ──────────────────────────── */
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function pingPC() {
+  if (mode === "demo") { await sleep(250); return demoWorld.pcUp; }
+  // в браузере нет ICMP: «жива машина» = отвечает её HTTP-сервер
+  const t0 = Date.now();
+  const r = await fetch(`${serverBase()}/status`, { mode: "cors" });
+  if (Date.now() - t0 > 4000) throw new Error("таймаут соединения");
+  if (!r.ok) throw new Error(`сервер вернул HTTP ${r.status}`);
+  return true;
+}
+
+async function apiStatus() {
+  if (mode === "demo") {
+    await sleep(350);
+    if (!demoWorld.pcUp) throw new Error("нет соединения с " + cfg.pc.ip);
+    return {
+      ok: true,
+      lmstudio_running: demoWorld.lmRunning,
+      lmstudio_version: demoWorld.lmRunning ? demoWorld.version : null,
+      lmstudio_model: demoWorld.lmRunning ? demoWorld.model : null,
+      lmstudio_context: demoWorld.lmRunning ? demoWorld.context : null,
+      pc_name: demoWorld.pcName,
+      os_name: demoWorld.osName,
+      uptime_s: Math.floor((Date.now() - demoWorld.bootAt) / 1000),
+    };
+  }
+  const r = await fetch(`${serverBase()}/status`, { mode: "cors" });
+  const body = await r.text().catch(() => "");
+  let obj = null;
+  try { obj = JSON.parse(body); } catch {}
+  if (!r.ok || !obj || !obj.ok) {
+    throw new Error((obj && obj.error) || `сервер вернул HTTP ${r.status}`);
+  }
+  return obj;
+}
+
+async function apiCommand(command, args = {}, timeoutMs = 6000) {
+  if (mode === "demo") {
+    await sleep(400);
+    if (!demoWorld.pcUp) throw new Error("нет соединения с " + cfg.pc.ip);
+    switch (command) {
+      case "hibernate":
+        demoWorld.pcUp = false;
+        return { ok: true, note: "гибернация запущена" };
+      case "start_lmstudio":
+        demoWorld.lmRunning = true;
+        demoWorld.pcUp = true; // «включил ПК» для наглядности
+        return { ok: true, pid: 4242 };
+      case "stop_lmstudio": {
+        const was = demoWorld.lmRunning;
+        demoWorld.lmRunning = false;
+        return was ? { ok: true, killed: "LM Studio.exe" }
+                   : { ok: true, killed: null, note: "не была запущена" };
+      }
+      case "set_lm_port":
+        return { ok: true, lmstudio_api_port: args.port };
+      case "status":
+        return apiStatus();
+      default:
+        throw new Error(`неизвестная команда: ${command}`);
+    }
+  }
+  const r = await fetch(`${serverBase()}/command`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ command, ...args }),
+    mode: "cors",
+  });
+  const body = await r.text().catch(() => "");
+  let obj = null;
+  try { obj = JSON.parse(body); } catch {}
+  if (!r.ok || !obj || !obj.ok) {
+    throw new Error((obj && obj.error) || `сервер вернул HTTP ${r.status}`);
+  }
+  return obj;
+}
+
+function serverBase() { return `http://${cfg.pc.ip}:${cfg.server.port}`; }
+
+/* ── применение результатов (дословно из app.py) ─────────────────────── */
+function applyPC(ok, tip = "") {
+  setDot($("dotPC"), ok, tip);
+  last.pc = ok;
+  last.t = new Date();
+  refreshStatusLine();
+}
+function applyStatus(res) {
+  if ("lmstudio_running" in res) {
+    const running = !!res.lmstudio_running;
+    setDot($("dotLM"), running, running ? "запущена" : "не запущена");
+    last.lm = running;
+  }
+  setLmTitle(res.lmstudio_version, res.lmstudio_model, res.lmstudio_context);
+  setPcTitle(res.pc_name, res.os_name, res.uptime_s);
+  last.t = new Date();
+  refreshStatusLine();
+}
+function applyStatusDown(msg) {
+  setDot($("dotLM"), null, "сервер недоступен");
+  last.lm = null;
+  setLmTitle(null);
+  setPcTitle(null);
+  last.t = new Date();
+  refreshStatusLine();
+}
+
+/* ── счётчик ручных операций (как _begin/_finish_manual) ─────────────── */
+function beginManual() { manualInflight++; autoMode = false; }
+function finishManual(btnEl) {
+  if (btnEl) btnEl.disabled = false;
+  manualInflight = Math.max(0, manualInflight - 1);
+  if (manualInflight === 0 && !autoEnabled) $("statusLine").textContent = autoLine();
+}
+
+/* ── автопроверка ────────────────────────────────────────────────────── */
+async function autoTick() {
+  if (!autoEnabled) return;
+  if (manualInflight > 0) return;
+  autoMode = true;
+  setChecking($("dotPC"));
+  setChecking($("dotLM"));
+
+  const pcP = pingPC()
+    .then(res => applyPC(!!res, res ? "в сети" : "не отвечает на ping"))
+    .catch(e => applyPC(false, `ошибка: ${e.message}`));
+
+  const lmP = apiStatus()
+    .then(applyStatus)
+    .catch(e => applyStatusDown(e.message));
+
+  await Promise.allSettled([pcP, lmP]);
+}
+
+function startTimer() {
+  stopTimer();
+  tickDeadline = Date.now() + autoIntervalS * 1000;
+  timerId = setInterval(() => {
+    tickDeadline = Date.now() + autoIntervalS * 1000;
+    autoTick();
+  }, autoIntervalS * 1000);
+  autoTick(); // первая проверка сразу
+}
+function stopTimer() {
+  if (timerId !== null) { clearInterval(timerId); timerId = null; }
+  tickDeadline = null;
+}
+
+/* ── действия (дословно из app.py) ───────────────────────────────────── */
+async function onCheckPC() {
+  const host = cfg.pc.ip;
+  $("btnCheckPC").disabled = true;
+  beginManual();
+  setChecking($("dotPC"));
+  msg(`Пинг ${host} …`);
+  try {
+    const res = await pingPC();
+    applyPC(!!res, res ? "в сети" : "не отвечает на ping");
+    msg(`ПК: ${res ? "🟢 в сети" : "🔴 не отвечает"} (${host})`);
+  } catch (e) {
+    applyPC(false, `ошибка: ${e.message}`);
+    msg(`Ошибка проверки ПК: ${e.message}`);
+  }
+  finishManual($("btnCheckPC"));
+}
+
+async function onCheckLM() {
+  $("btnCheckLM").disabled = true;
+  beginManual();
+  setChecking($("dotLM"));
+  msg("Проверяю состояние LM Studio …");
+  try {
+    const res = await apiStatus();
+    const running = !!res.lmstudio_running;
+    setDot($("dotLM"), running, running ? "запущена" : "не запущена");
+    last.lm = running;
+    setLmTitle(res.lmstudio_version, res.lmstudio_model, res.lmstudio_context);
+    setPcTitle(res.pc_name, res.os_name, res.uptime_s);
+    msg(`LM Studio: ${running ? "🟢 запущена" : "🔴 не запущена"}`);
+  } catch (e) {
+    setDot($("dotLM"), null, `не проверено: ${e.message}`);
+    last.lm = null;
+    setLmTitle(null);
+    setPcTitle(null);
+    msg(`LM Studio: не проверено — ${e.message}`);
+  }
+  finishManual($("btnCheckLM"));
+}
+
+async function onWol() {
+  const mac = cfg.pc.mac;
+  if (mode === "demo") {
+    msg(`⚠ WoL недоступен в браузере (нужен desktop-клиент; magic packet → ${mac}, ×3 — имитация отправлена)`);
+    return;
+  }
+  beginManual();
+  msg(`Отправляю magic packet → ${mac} …`);
+  try {
+    const res = await apiCommand("wol", { mac }, 6000);
+    msg(`✅ Magic packet: ${res.to || mac} (MAC ${res.mac || mac}, ×${res.sent || 3}).`);
+  } catch (e) {
+    msg(`❌ WoL: ${e.message} (в браузере UDP недоступен — используйте desktop-клиент)`);
+  }
+  finishManual();
+}
+
+async function onHibernate() {
+  beginManual();
+  msg("Отправляю команду: гибернация …");
+  try {
+    await apiCommand("hibernate", {}, 6000);
+    setDot($("dotPC"), false, "уходит в гибернацию");
+    last.pc = false;
+    msg("🌙 Гибернация запущена. Через секунду ПК погаснет.");
+  } catch (e) {
+    msg(`❌ Гибернация не выполнена: ${e.message}`);
+  }
+  finishManual();
+}
+
+async function checkLmQuiet() {
+  setChecking($("dotLM"));
+  try {
+    const res = await apiStatus();
+    const running = !!res.lmstudio_running;
+    setDot($("dotLM"), running, running ? "запущена" : "не запущена");
+    setLmTitle(res.lmstudio_version, res.lmstudio_model, res.lmstudio_context);
+    setPcTitle(res.pc_name, res.os_name, res.uptime_s);
+  } catch (e) {
+    setDot($("dotLM"), null, `не проверено: ${e.message}`);
+    setLmTitle(null);
+    setPcTitle(null);
+  }
+}
+
+async function onStartLM() {
+  beginManual();
+  msg("Отправляю команду: запустить LM Studio …");
+  try {
+    const res = await apiCommand("start_lmstudio");
+    const extra = res.pid ? ` (PID ${res.pid})` : (res.opened ? ` (${res.opened})` : "");
+    msg(`✅ LM Studio: запущена${extra}.`);
+    checkLmQuiet();
+  } catch (e) {
+    msg(`❌ Не удалось запустить LM Studio: ${e.message}`);
+  }
+  finishManual();
+}
+
+async function onStopLM() {
+  beginManual();
+  msg("Отправляю команду: остановить LM Studio …");
+  try {
+    const res = await apiCommand("stop_lmstudio");
+    const note = res.note;
+    msg(res.killed === null && note
+      ? `✅ LM Studio: ${note}.`
+      : (note ? `✅ LM Studio: ${note}.` : "✅ LM Studio: остановлена."));
+    checkLmQuiet();
+  } catch (e) {
+    msg(`❌ Не удалось остановить LM Studio: ${e.message}`);
+  }
+  finishManual();
+}
+
+/* ── настройки (аналог SettingsDialog) ───────────────────────────────── */
+function openSettings() {
+  $("sIp").value = cfg.pc.ip;
+  $("sMac").value = cfg.pc.mac;
+  $("sPort").value = cfg.server.port;
+  $("sLmPort").value = cfg.lmstudio ? cfg.lmstudio.api_port : 1234;
+  $("sAuto").checked = autoEnabled;
+  $("sInterval").value = autoIntervalS;
+  $("overlay").classList.add("open");
+}
+function closeSettings() { $("overlay").classList.remove("open"); }
+
+function normalizeMac(mac) {
+  const clean = (mac || "").toLowerCase().replace(/[^0-9a-f]/g, "");
+  if (clean.length !== 12) throw new Error("Некорректный MAC-адрес: ожидается 6 пар шестнадцатеричных цифр (напр. AA:BB:CC:DD:EE:FF).");
+  const pairs = clean.match(/../g);
+  return pairs.join(":").toUpperCase();
+}
+
+function saveSettings() {
+  const ip = $("sIp").value.trim();
+  if (!ip) { alert("Укажите IP компьютера."); return; }
+  let macNorm;
+  try { macNorm = normalizeMac($("sMac").value); }
+  catch (e) { alert(e.message); return; }
+  const port = parseInt($("sPort").value, 10);
+  const lmPort = parseInt($("sLmPort").value, 10);
+  if (!(port >= 1 && port <= 65535)) { alert("Порт сервера: 1–65535."); return; }
+  if (!(lmPort >= 1 && lmPort <= 65535)) { alert("Порт API LM Studio: 1–65535."); return; }
+
+  cfg = {
+    pc: { ip, mac: macNorm },
+    server: { port },
+    lmstudio: { api_port: lmPort },
+    auto_check: { enabled: $("sAuto").checked, interval_s: Math.max(1, parseInt($("sInterval").value, 10) || 10) },
+  };
+  autoEnabled = cfg.auto_check.enabled;
+  autoIntervalS = cfg.auto_check.interval_s;
+  try { localStorage.setItem("rpcm.web.cfg", JSON.stringify(cfg)); } catch (e) { /* приватный режим — не страшно */ }
+
+  refreshIp();
+  if (autoEnabled) { startTimer(); }
+  else {
+    stopTimer();
+    autoMode = false;
+    $("statusLine").textContent = autoLine();
+  }
+  closeSettings();
+  msg("⚙ Настройки сохранены.");
+  // порт LM Studio на сервер (как _push_lm_port в app.py)
+  if (mode === "live") {
+    apiCommand("set_lm_port", { port: lmPort }, 6000)
+      .then(res => msg(`⚙ Порт LM Studio применён на сервере: ${res.lmstudio_api_port || lmPort}.`))
+      .catch(e => msg(`⚙ Порт LM Studio сохранён локально (${lmPort}), но применить на сервере не удалось: ${e.message}.`));
+  }
+}
+
+/* ── переключение режима ─────────────────────────────────────────────── */
+function setMode(m) {
+  mode = m;
+  const badge = $("modeBadge");
+  badge.textContent = m.toUpperCase();
+  badge.className = "mode-badge " + m;
+  msg(m === "demo"
+    ? "Демо-режим: ответы имитируются, сеть не используется."
+    : `Live-режим: команды идут в ${serverBase()}.`);
+  if (autoEnabled) autoTick();
+}
+
+/* ── привязка событий ────────────────────────────────────────────────── */
+$("btnCheckPC").onclick = onCheckPC;
+$("btnCheckLM").onclick = onCheckLM;
+$("btnWol").onclick = onWol;
+$("btnHib").onclick = onHibernate;
+$("btnStartLM").onclick = onStartLM;
+$("btnStopLM").onclick = onStopLM;
+$("btnSettings").onclick = openSettings;
+$("btnCancel").onclick = closeSettings;
+$("btnSave").onclick = saveSettings;
+$("modeBadge").onclick = () => setMode(mode === "demo" ? "live" : "demo");
+$("btnHowto").onclick = () => alert("IP и MAC компьютера — на Windows: ipconfig /all.");
+$("overlay").addEventListener("click", e => { if (e.target === $("overlay")) closeSettings(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeSettings(); });
+
+/* ── загрузка настроек (как у desktop-клиента) ─────────────────────────
+   приоритет: 1) сохранённые вручную (localStorage)  2) config.json
+   3) дефолты (демо). Реальные IP/порты живут в config.json, не в коде. */
+function applyCfg(c) {
+  if (!c) return;
+  if (c.pc && c.pc.ip) cfg.pc.ip = String(c.pc.ip);
+  if (c.pc && c.pc.mac) cfg.pc.mac = String(c.pc.mac);
+  if (c.server && c.server.port) cfg.server.port = parseInt(c.server.port, 10);
+  if (c.lmstudio && c.lmstudio.api_port) cfg.lmstudio.api_port = parseInt(c.lmstudio.api_port, 10);
+  autoEnabled = !!(c.auto_check && c.auto_check.enabled);
+  autoIntervalS = Math.max(1, parseInt((c.auto_check && c.auto_check.interval_s) || 10, 10));
+  cfg.auto_check = { enabled: autoEnabled, interval_s: autoIntervalS };
+  refreshIp();
+}
+function startAuto() {
+  if (autoEnabled) startTimer();
+  else { stopTimer(); autoMode = false; $("statusLine").textContent = autoLine(); }
+}
+async function loadConfig() {
+  try {
+    const s = localStorage.getItem("rpcm.web.cfg");
+    if (s) { const c = JSON.parse(s); if (c && (c.pc || c.server)) { applyCfg(c); startAuto(); msg("Загружены ваши сохранённые настройки."); return; } }
+  } catch (e) { /* нет сохранённых — дальше */ }
+  for (const p of ["../client/config.json", "client/config.json", "config.json"]) {
+    try {
+      const r = await fetch(p, { cache: "no-store" });
+      if (r.ok) { const c = await r.json(); if (c && (c.pc || c.server)) { applyCfg(c); startAuto(); msg("Загружены настройки из config.json."); return; } }
+    } catch (e) { /* пробуем следующий путь */ }
+  }
+  startAuto(); // дефолты (демо)
+}
+
+/* ── старт ───────────────────────────────────────────────────────────── */
+refreshIp();
+loadConfig();
+</script>
+</body>
+</html>
