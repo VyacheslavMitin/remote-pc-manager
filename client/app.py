@@ -128,11 +128,14 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(16, 16, 16, 16)
         root.setSpacing(10)
 
-        # Шестерёнка настроек — верхний левый угол (только значок),
-        # затем заголовок
+        # Заголовок + шестерёнка настроек (верхний правый угол, только значок)
         title_row = QHBoxLayout()
         title_row.setContentsMargins(0, 0, 0, 0)
         title_row.setSpacing(8)
+        title = QLabel("Управление удалённым ПК")
+        title.setObjectName("title")
+        title_row.addWidget(title)
+        title_row.addStretch(1)
         self.btn_settings = QPushButton("⚙")
         self.btn_settings.setObjectName("gear")
         self.btn_settings.setFixedSize(51, 51)
@@ -140,10 +143,6 @@ class MainWindow(QMainWindow):
         self.btn_settings.setToolTip("Настройки")
         self.btn_settings.clicked.connect(self.on_settings)
         title_row.addWidget(self.btn_settings)
-        title_row.addStretch(1)
-        title = QLabel("Управление удалённым ПК")
-        title.setObjectName("title")
-        title_row.addWidget(title)
         root.addLayout(title_row)
 
         # ── Блок «ПК» ── проверка состояния сверху, затем действия
