@@ -51,8 +51,11 @@ def _deep_merge(base: dict, override: dict | None) -> dict:
 
 
 class Config:
-    def __init__(self, data: dict):
+    def __init__(self, data: dict, path: str | None = None):
         self.data = data
+        # Откуда загружен конфиг (config.json / config.example.json) — save()
+        # пишет обратно в тот же файл, если явно не задан path.
+        self.path = path
 
     # --- общие ---
     @property
@@ -110,4 +113,24 @@ def load(path: str | None = None) -> Config:
         with open(path, "r", encoding="utf-8") as fh:
             data = json.load(fh)
     data = _deep_merge(DEFAULTS, data)
-    return Config(data)
+    return Config(data, path if os.path.exists(path) else None)
+
+
+EXAMPLE_PATH = os.path.join(BASE_DIR, "config.example.json")
+
+
+def save(cfg: Config, path: str | None = None) -> str:
+    """Сохраняет конфиг (данные с подставленными дефолтами) в файл.
+
+    `path` — явная цель (в тестах); по умолчанию — тот файл, из которого
+    конфиг загружен. Если это config.example.json (коммитный файл-пример),
+    рядом создаётся новый config.json."""
+    target = path or cfg.path or os.path.join(BASE_DIR, "config.json")
+    # файл-пример (config.example.json) — не перезаписываем: рядом с ним
+    # создаём обычный config.json
+    if os.path.basename(os.path.abspath(target)) == "config.example.json":
+        target = os.path.join(os.path.dirname(os.path.abspath(target)), "config.json")
+    with open(target, "w", encoding="utf-8") as fh:
+        json.dump(cfg.data, fh, ensure_ascii=False, indent=2)
+        fh.write("\n")
+    return target

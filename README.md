@@ -176,10 +176,11 @@ curl -X POST http://<IP_Винды>:8787/command -H "Content-Type: application/j
 
 | Команда | Ответ |
 |---|---|
-| `status` | `{"ok": true, "command": "status", "lmstudio_running": bool, "lmstudio_version": str\|null, "lmstudio_model": str\|null, "pc_name": str, "os_name": str, "uptime_s": int\|null}` — сам ответ подтверждает доступность сервера; `pc_name` — имя ПК (hostname), `os_name` — ОС сервера (напр. «Windows 11»), `uptime_s` — секунд с момента запуска системы; `lmstudio_version` — версия установленной LM Studio (`VersionInfo.ProductVersion` exe, кэшируется сервером до смены mtime файла); `lmstudio_model` — id загруженной модели (локальный API-сервер LM Studio, `GET http://127.0.0.1:<api_port>/v1/models`; `null`, если API не запущен или моделей нет) — клиент показывает оба поля в заголовке блока («LM Studio (v0.3.25, модель: …)»); при старой версии сервера заголовок остаётся «(запущена)» / «(не запущена)». Аптайм форматируется без секунд («3 ч 14 мин»). |
+| `status` | `{"ok": true, "command": "status", "lmstudio_running": bool, "lmstudio_version": str\|null, "lmstudio_model": str\|null, "pc_name": str, "os_name": str, "uptime_s": int\|null}` — сам ответ подтверждает доступность сервера; `pc_name` — имя ПК (hostname), `os_name` — ОС сервера (напр. «Windows 11»), `uptime_s` — секунд с момента запуска системы; `lmstudio_version` — версия установленной LM Studio (`VersionInfo.ProductVersion` exe, кэшируется сервером до смены mtime файла); `lmstudio_model` — id загруженной модели (локальный API-сервер LM Studio, `GET http://127.0.0.1:<api_port>/v1/models`; `null`, если API не запущен или моделей нет) — клиент показывает оба поля в заголовке блока («LM Studio (v0.3.25, модель: …)»); если версия/модель неизвестны, заголовок — просто «LM Studio». Аптайм форматируется без секунд («3 ч 14 мин»). |
 | `hibernate` | `{"ok": true, "command": "hibernate", "note": "гибернация запущена"}` — ответ уходит, **потом** машина уходит в гибернацию. |
 | `start_lmstudio` | `{"ok": true, "command": "start_lmstudio", "pid": int, "exe": "..."}` |
 | `stop_lmstudio` | `{"ok": true, "command": "stop_lmstudio", "killed": "LM Studio.exe"}` (или `"killed": null` + `note`, если не было запущено) |
+| `set_lm_port` | тело `{"command": "set_lm_port", "port": 5555}` → `{"ok": true, "command": "set_lm_port", "lmstudio_api_port": 5555}` — задаёт `lmstudio.api_port` и сразу сохраняет в `config.json` сервера; порт должен быть числом 1–65535. Клиент шлёт сам после сохранения настроек (⚙). |
 
 Ошибки: `{"ok": false, "error": "..."}` с HTTP `400` (плохое тело / неизвестная команда)
 или `404` (неизвестный путь).
@@ -218,6 +219,7 @@ cp config.example.json config.json
 {
   "pc": { "ip": "192.168.1.100", "mac": "AA:BB:CC:DD:EE:FF" },
   "server": { "port": 8787 },
+  "lmstudio": { "api_port": 4321 },
   "auto_check": { "enabled": true, "interval_s": 10 }
 }
 ```
@@ -227,6 +229,7 @@ cp config.example.json config.json
 | `pc.ip` | IP управляемого ПК (для пинга **и** хост сервера — это одна машина). |
 | `pc.mac` | MAC-адрес сетевой карты (для Wake-on-LAN). Формат `AA:BB:CC:DD:EE:FF`. |
 | `server.port` | Порт сервера (по умолчанию `8787`). Хост сервера = `pc.ip`. |
+| `lmstudio.api_port` | Порт локального API-сервера LM Studio (по умолчанию `4321`). После сохранения настроек клиент посылает его на сервер командой `set_lm_port` — сервер использует его для чтения загруженной модели. |
 | `auto_check.enabled` | Автопроверка состояния: вкл/выкл (по умолчанию вкл). |
 | `auto_check.interval_s` | Интервал автопроверки, в секундах (по умолчанию `10`). |
 
@@ -266,8 +269,8 @@ sh start/build_app.sh   # собрать/пересобрать .app-бандл
 | **Статус ПК** + *Проверить* | 🟡 проверка / 🟢 в сети / 🔴 не отвечает — ping по `pc.ip` (единственный индикатор «машина жива» — сервер на той же машине). |
 | **▶ Включить LM Studio** | Команда `start_lmstudio`. |
 | **⏹ Выключить LM Studio** | Команда `stop_lmstudio`. |
-| **Состояние LM Studio** + *Проверить состояние* | 🟡 проверка / 🟢 запущена / 🔴 не запущена. Заголовок блока — «LM Studio (запущена)» / «LM Studio (не запущена)» (просто «LM Studio», пока не проверено). |
-| **⚙ (верхний левый угол, только значок)** | Диалог настроек: IP, MAC, порт сервера, автопроверка (вкл/выкл, интервал в секундах) → сохранение в `config.json`. |
+| **Состояние LM Studio** + *Проверить состояние* | 🟡 проверка / 🟢 запущена / 🔴 не запущена — состояние показывает индикатор; заголовок блока — версия и модель («LM Studio (v0.3.25, модель: …)»), при простое — просто «LM Studio». |
+| **⚙ (верхний правый угол, только значок)** | Диалог настроек: IP, MAC, порт сервера, порт API LM Studio, автопроверка (вкл/выкл, интервал в секундах) → сохранение в `config.json` (порт LM Studio дополнительно применяется на сервере через `set_lm_port`). |
 | **IP в правом нижнем углу** | IP управляемого ПК из настроек — на одной строке со строкой статуса (статус слева, IP справа); обновляется после сохранения настроек. |
 
 Кнопки «пробуждение + гибернация» и «включить/выключить LM Studio» стоят

@@ -2,7 +2,8 @@
 
 Эндпоинты:
     POST /command   тело {"command": "status"|"hibernate"|
-                        "start_lmstudio"|"stop_lmstudio"}
+                        "start_lmstudio"|"stop_lmstudio"|"set_lm_port",
+                        ...доп. поля, напр. "port"}
     GET  /status    то же, что команда "status" (удобно для проверки из браузера)
     GET  /          {"ok": true, "service": "rpcm-server"}
 
@@ -42,7 +43,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         path = self.path.split("?", 1)[0].rstrip("/") or "/"
         if path == "/status":
-            self._handle_command("status")
+            self._handle_command("status", {})
         elif path == "/":
             self._send_json(200, {"ok": True, "service": "rpcm-server"})
         else:
@@ -68,7 +69,10 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(400, {"ok": False, "error": "ожидается объект JSON"})
             return
         command = str(payload.get("command", "") or "")
-        self._handle_command(command)
+        # всё, кроме "command", — аргументы команды (напр. "port" для
+        # set_lm_port)
+        args = {k: v for k, v in payload.items() if k != "command"}
+        self._handle_command(command, args)
 
     def do_OPTIONS(self) -> None:  # noqa: N802
         self.send_response(204)
@@ -78,11 +82,11 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     # ---------- логика ----------
-    def _handle_command(self, command: str) -> None:
+    def _handle_command(self, command: str, args: dict | None = None) -> None:
         log = logging.getLogger("rpcm.server")
         log.info("команда: %r  от %s", command, self.address_string())
         try:
-            result = run(command, self._cfg())
+            result = run(command, self._cfg(), args)
         except ValueError as exc:
             self._send_json(400, {"ok": False, "error": str(exc)})
             return

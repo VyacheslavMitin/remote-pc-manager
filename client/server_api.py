@@ -15,8 +15,12 @@ class ServerError(Exception):
     """Ошибка общения с сервером (нет связи, таймаут, ошибка сервера)."""
 
 
-def request(host: str, port: int, command: str, timeout: float = 5.0) -> dict:
-    """Выполняет команду на сервере и возвращает распарсенный JSON (ok=true)."""
+def request(host: str, port: int, command: str, timeout: float = 5.0,
+            args: dict | None = None) -> dict:
+    """Выполняет команду на сервере и возвращает распарсенный JSON (ok=true).
+
+    args — дополнительные поля запроса (например {"port": 4321} для
+    set_lm_port); идут в тело POST рядом с "command"."""
     host = (host or "").strip()
     if not host:
         raise ServerError("IP компьютера не задан (поле «IP компьютера» в настройках)")
@@ -26,7 +30,7 @@ def request(host: str, port: int, command: str, timeout: float = 5.0) -> dict:
         raise ServerError(f"некорректный порт сервера: {port!r}")
 
     url = f"http://{host}:{port}/command"
-    payload = json.dumps({"command": command}).encode("utf-8")
+    payload = json.dumps({"command": command, **(args or {})}).encode("utf-8")
     req = urllib.request.Request(
         url, data=payload, method="POST",
         headers={"Content-Type": "application/json", "User-Agent": "rpcm-client/1.0"},

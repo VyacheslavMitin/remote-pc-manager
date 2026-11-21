@@ -13,16 +13,16 @@
 (pc_name, os_name, uptime_s из status; аптайм форматируется без секунд,
 ОС — из ответа сервера, либо константа Windows 11, если сервер не
 прислал её), иначе просто «ПК» (сервер недоступен).
-Шестерёнка настроек — в верхнем левом углу (только значок);
+Шестерёнка настроек — в верхнем правом углу (только значок);
 внизу слева — строка состояния автопроверки (вкл/выкл + время следующей
 проверки), внизу справа — «IP: <адрес управляемого ПК>» (из настроек).
 Заголовок блока «LM Studio» — версия LM Studio на целевом ПК и
 загруженная модель: «LM Studio (v0.3.25, модель: qwen2.5-7b-instruct)»,
 если сервер прислал lmstudio_version / lmstudio_model (модель — из
 локального API-сервера LM Studio, GET /v1/models); показывается только
-то, что прислал. При старой версии сервера (неизвестно) — «LM Studio
-(запущена)» / «LM Studio (не запущена)» (lmstudio_running из status),
-а если сервер недоступен — просто «LM Studio» (не проверено).
+то, что прислал. Если ничего неизвестно (старый сервер или сервер
+недоступен) — просто «LM Studio»; состояние (запущена/не запущена)
+показывает индикатор-точка.
 """
 from __future__ import annotations
 
@@ -135,7 +135,7 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(16, 16, 16, 16)
         root.setSpacing(10)
 
-        # Шестерёнка настроек в верхнем левом углу (только значок), затем заголовок
+        # Шестерёнка настроек — в верхнем правом углу (только значок), затем заголовок
         title_row = QHBoxLayout()
         title_row.setContentsMargins(0, 0, 0, 0)
         title_row.setSpacing(8)
@@ -145,11 +145,11 @@ class MainWindow(QMainWindow):
         self.btn_settings.setCursor(Qt.PointingHandCursor)
         self.btn_settings.setToolTip("Настройки")
         self.btn_settings.clicked.connect(self.on_settings)
-        title_row.addWidget(self.btn_settings)
         title = QLabel("Управление удалённым ПК")
         title.setObjectName("title")
         title_row.addWidget(title)
         title_row.addStretch(1)
+        title_row.addWidget(self.btn_settings)
         root.addLayout(title_row)
 
         # ── Блок «ПК» ── проверка состояния сверху, затем действия
@@ -290,7 +290,6 @@ class MainWindow(QMainWindow):
 
     def _set_lm_title(
         self,
-        running: bool | None,
         version: str | None = None,
         model: str | None = None,
     ) -> None:
@@ -299,8 +298,8 @@ class MainWindow(QMainWindow):
         «LM Studio (v0.3.25, модель: qwen2.5-7b-instruct)», если сервер
         прислал lmstudio_version / lmstudio_model; только то, что прислал
         (версия без модели, модель без версии). Если ничего неизвестно
-        (старый сервер) — «(запущена)» / «(не запущена)» по
-        lmstudio_running; сервер недоступен — просто «LM Studio»."""
+        (старый сервер или сервер недоступен) — просто «LM Studio»;
+        состояние (запущена/не запущена) показывает индикатор-точка."""
         parts: list[str] = []
         v = (version or "").strip()
         if v:
@@ -312,13 +311,8 @@ class MainWindow(QMainWindow):
             parts.append(f"модель: {m}")
         if parts:
             self.title_lm.setText(f"LM Studio ({', '.join(parts)})")
-            return
-        if running is None:
-            self.title_lm.setText("LM Studio")
-        elif running:
-            self.title_lm.setText("LM Studio (запущена)")
         else:
-            self.title_lm.setText("LM Studio (не запущена)")
+            self.title_lm.setText("LM Studio")
 
     def _block(self, title: str) -> tuple[QFrame, QVBoxLayout, QLabel]:
         """Собирает блок-панель: заголовок секции + внутренний layout.
@@ -391,11 +385,7 @@ class MainWindow(QMainWindow):
             running = bool(res["lmstudio_running"])
             self.row_lm.set_state(running, "запущена" if running else "не запущена")
             self._last["lm"] = running
-            self._set_lm_title(running, res.get("lmstudio_version"),
-                               res.get("lmstudio_model"))
-        else:
-            self._set_lm_title(None, res.get("lmstudio_version"),
-                               res.get("lmstudio_model"))
+        self._set_lm_title(res.get("lmstudio_version"), res.get("lmstudio_model"))
         self._set_pc_title(
             res.get("pc_name"), res.get("os_name"), res.get("uptime_s")
         )
@@ -472,8 +462,7 @@ class MainWindow(QMainWindow):
             running = bool(res.get("lmstudio_running"))
             self.row_lm.set_state(running, "запущена" if running else "не запущена")
             self._last["lm"] = running
-            self._set_lm_title(running, res.get("lmstudio_version"),
-                               res.get("lmstudio_model"))
+            self._set_lm_title(res.get("lmstudio_version"), res.get("lmstudio_model"))
             self._set_pc_title(
             res.get("pc_name"), res.get("os_name"), res.get("uptime_s")
         )
@@ -536,8 +525,7 @@ class MainWindow(QMainWindow):
             self.row_lm.set_state(
                 bool(res.get("lmstudio_running")),
                 "запущена" if res.get("lmstudio_running") else "не запущена")
-            self._set_lm_title(bool(res.get("lmstudio_running")),
-                               res.get("lmstudio_version"),
+            self._set_lm_title(res.get("lmstudio_version"),
                                res.get("lmstudio_model"))
             self._set_pc_title(
             res.get("pc_name"), res.get("os_name"), res.get("uptime_s")
@@ -590,8 +578,35 @@ class MainWindow(QMainWindow):
             if self._auto_enabled:
                 self._timer.start()
                 self._auto_tick()  # сразу перепроверить с новыми настройками
-                self._msg("⚙ Настройки сохранены.")
             else:
                 self._timer.stop()
                 self._auto_mode = False
                 self.status.setText(self._auto_line())
+            self._msg("⚙ Настройки сохранены.")
+            self._push_lm_port()
+
+    def _push_lm_port(self) -> None:
+        """Применяет порт API LM Studio на сервере (команда set_lm_port):
+        сервер сохраняет его в свой config.json и сразу использует новое
+        значение. Значение дублируется в конфиге клиента — поле в
+        настройках не теряет значение, даже если сервер недоступен или
+        это старая версия без команды set_lm_port."""
+        host, port = self._server()
+        lm_port = int(self.cfg.get("lmstudio", {}).get("api_port", 4321))
+
+        def _ok(res):
+            got = res.get("lmstudio_api_port")
+            self._msg(f"⚙ Порт LM Studio применён на сервере: {got or lm_port}.")
+
+        def _fail(msg):
+            self._msg(
+                f"⚙ Порт LM Studio сохранён локально ({lm_port}), но применить "
+                f"на сервере не удалось: {msg}. Если сервер старой версии — "
+                f"задайте lmstudio.api_port в его config.json вручную."
+            )
+
+        self._run(
+            lambda: api_request(host, port, "set_lm_port", timeout=6.0,
+                                args={"port": lm_port}),
+            ok=_ok, fail=_fail,
+        )

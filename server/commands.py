@@ -11,6 +11,9 @@
     start_lmstudio  -> {"ok": true, "pid": int, ...}
     stop_lmstudio   -> {"ok": true, "killed": str|None,
                         "note": "остановлена аккуратно|принудительно|не был запущен"}
+    set_lm_port     тело {"command": "set_lm_port", "port": 4321}
+                    -> {"ok": true, "command": "set_lm_port", "lmstudio_api_port": 4321}
+                       (задаёт lmstudio.api_port и сохраняет его в config.json)
 """
 from __future__ import annotations
 
@@ -22,9 +25,9 @@ import time
 
 import hibernate
 import lmstudio
-from config import Config
+from config import Config, save as save_config
 
-SUPPORTED = ("status", "hibernate", "start_lmstudio", "stop_lmstudio")
+SUPPORTED = ("status", "hibernate", "start_lmstudio", "stop_lmstudio", "set_lm_port")
 
 
 def _os_name() -> str:
@@ -66,7 +69,7 @@ def _uptime_seconds() -> int | None:
     return None
 
 
-def run(command: str, cfg: Config) -> dict:
+def run(command: str, cfg: Config, args: dict | None = None) -> dict:
     c = (command or "").strip().lower()
     if c not in SUPPORTED:
         raise ValueError(
@@ -97,6 +100,18 @@ def run(command: str, cfg: Config) -> dict:
     if c == "stop_lmstudio":
         info = lmstudio.stop(cfg.lm_process)
         return {"ok": True, "command": "stop_lmstudio", **info}
+
+    if c == "set_lm_port":
+        raw = (args or {}).get("port")
+        try:
+            port = int(str(raw).strip())
+        except (TypeError, ValueError):
+            raise ValueError(f"set_lm_port: порт должен быть числом, а не {raw!r}")
+        if not (1 <= port <= 65535):
+            raise ValueError(f"set_lm_port: порт вне диапазона 1–65535: {raw!r}")
+        cfg.data.setdefault("lmstudio", {})["api_port"] = port
+        save_config(cfg)
+        return {"ok": True, "command": "set_lm_port", "lmstudio_api_port": port}
 
     # недостижимо
     raise ValueError(f"неизвестная команда {command!r}")

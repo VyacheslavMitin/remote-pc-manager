@@ -1,4 +1,4 @@
-"""Диалог настроек клиента: IP, MAC, порт сервера, автопроверка."""
+"""Диалог настроек клиента: IP, MAC, порты (сервер + API LM Studio), автопроверка."""
 from __future__ import annotations
 
 from PySide6.QtWidgets import (
@@ -36,10 +36,19 @@ class SettingsDialog(QDialog):
         self.sport = QSpinBox()
         self.sport.setRange(1, 65535)
         self.sport.setValue(int(cfg.get("server", {}).get("port", 8787)))
+        self.lmport = QSpinBox()
+        self.lmport.setRange(1, 65535)
+        self.lmport.setValue(int(cfg.get("lmstudio", {}).get("api_port", 4321)))
+        self.lmport.setToolTip(
+            "Порт локального API-сервера LM Studio на управляемом ПК (серверная "
+            "часть). Стандарт LM Studio — 1234. Сохраняется в конфиге сервера "
+            "(lmstudio.api_port)."
+        )
 
         form.addRow("IP компьютера", self.ip)
         form.addRow("MAC (Wake-on-LAN)", self.mac)
         form.addRow("Порт сервера", self.sport)
+        form.addRow("Порт API LM Studio", self.lmport)
         layout.addLayout(form)
 
         # --- Автопроверка ---
@@ -107,6 +116,7 @@ class SettingsDialog(QDialog):
         return {
             "pc": {"ip": self.ip.text().strip(), "mac": mac_norm},
             "server": {"port": self.sport.value()},
+            "lmstudio": {"api_port": self.lmport.value()},
             "auto_check": {
                 "enabled": self.auto_enabled.isChecked(),
                 "interval_s": self.auto_interval.value(),
