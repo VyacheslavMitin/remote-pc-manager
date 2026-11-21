@@ -9,8 +9,9 @@
 Раскладка: главное окно разделено на два блока — «ПК» и «LM Studio»;
 в каждом блоке строка проверки состояния (индикатор + «Проверить»)
 сверху, под ней — кнопки действий.
-Заголовок блока «ПК» — «ПК (имя)», если сервер ответил (pc_name из
-status), иначе просто «ПК» (сервер недоступен).
+Заголовок блока «ПК» — «ПК (имя, ОС)», если сервер ответил (pc_name и
+os_name из status; ОС — из ответа сервера, либо константа Windows 11,
+если сервер не прислал её), иначе просто «ПК» (сервер недоступен).
 Шестерёнка настроек — в верхнем правом углу (только значок);
 внизу слева — строка состояния автопроверки (вкл/выкл + время следующей
 проверки), внизу справа — «IP: <адрес управляемого ПК>» (из настроек).
@@ -37,6 +38,11 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
 )
+
+# Запасное имя ОС сервера (целевой Windows-ПК) — на случай, если сервер
+# не прислал os_name в status (старая версия сервера). Если сервер прислал —
+# его значение в приоритете.
+DEFAULT_PC_OS = "Windows 11"
 
 
 class StatusRow(QWidget):
@@ -233,11 +239,17 @@ class MainWindow(QMainWindow):
         (при создании и после сохранения настроек)."""
         return f"IP: {self.cfg['pc']['ip']}"
 
-    def _set_pc_name(self, name: str | None) -> None:
-        """Заголовок блока «ПК»: «ПК (имя)», если сервер ответил и прислал
-        pc_name; иначе просто «ПК» (сервер недоступен или имя пустое)."""
+    def _set_pc_title(self, name: str | None, os_name: str | None = None) -> None:
+        """Заголовок блока «ПК»: «ПК (имя, ОС)», если сервер ответил
+        (pc_name + os_name из status). ОС — из ответа сервера, либо при
+        старой версии сервера — константа DEFAULT_PC_OS. Сервер
+        недоступен или имя пустое — просто «ПК»."""
         name = (name or "").strip()
-        self.title_pc.setText(f"ПК ({name})" if name else "ПК")
+        if not name:
+            self.title_pc.setText("ПК")
+            return
+        os_text = (os_name or "").strip() or DEFAULT_PC_OS
+        self.title_pc.setText(f"ПК ({name}, {os_text})")
 
     def _block(self, title: str) -> tuple[QFrame, QVBoxLayout, QLabel]:
         """Собирает блок-панель: заголовок секции + внутренний layout.
@@ -310,14 +322,14 @@ class MainWindow(QMainWindow):
             running = bool(res["lmstudio_running"])
             self.row_lm.set_state(running, "запущена" if running else "не запущена")
             self._last["lm"] = running
-        self._set_pc_name(res.get("pc_name"))
+        self._set_pc_title(res.get("pc_name"), res.get("os_name"))
         self._last["t"] = time.strftime("%H:%M:%S")
         self._refresh_status_line()
 
     def _apply_status_down(self, msg: str) -> None:
         self.row_lm.set_state(None, "сервер недоступен")
         self._last["lm"] = None
-        self._set_pc_name(None)
+        self._set_pc_title(None)
         self._last["t"] = time.strftime("%H:%M:%S")
         self._refresh_status_line()
 
@@ -383,13 +395,13 @@ class MainWindow(QMainWindow):
             running = bool(res.get("lmstudio_running"))
             self.row_lm.set_state(running, "запущена" if running else "не запущена")
             self._last["lm"] = running
-            self._set_pc_name(res.get("pc_name"))
+            self._set_pc_title(res.get("pc_name"), res.get("os_name"))
             self._msg(f"LM Studio: {'🟢 запущена' if running else '🔴 не запущена'}")
 
         def _fail(msg):
             self.row_lm.set_state(None, f"не проверено: {msg}")
             self._last["lm"] = None
-            self._set_pc_name(None)
+            self._set_pc_title(None)
             self._msg(f"LM Studio: не проверено — {msg}")
 
         self._run(lambda: api_request(host, port, "status"), ok=_ok, fail=_fail,
@@ -442,11 +454,11 @@ class MainWindow(QMainWindow):
             self.row_lm.set_state(
                 bool(res.get("lmstudio_running")),
                 "запущена" if res.get("lmstudio_running") else "не запущена")
-            self._set_pc_name(res.get("pc_name"))
+            self._set_pc_title(res.get("pc_name"), res.get("os_name"))
 
         def _fail(msg):
             self.row_lm.set_state(None, f"не проверено: {msg}")
-            self._set_pc_name(None)
+            self._set_pc_title(None)
 
         self._run(lambda: api_request(host, port, "status"), ok=_ok, fail=_fail)
 

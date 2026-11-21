@@ -2,7 +2,8 @@
 
 Поддерживаемые команды (тело POST /command: {"command": "<имя>"}):
     status           {"ok": true, "command": "status", "lmstudio_running": bool,
-                      "pc_name": "<имя ПК (hostname)>"}
+                      "pc_name": "<имя ПК (hostname)>",
+                      "os_name": "<ОС сервера, напр. «Windows 11»>"}
     hibernate       -> {"ok": true, ...}  (машина погаснет после ответа)
     start_lmstudio  -> {"ok": true, "pid": int, ...}
     stop_lmstudio   -> {"ok": true, "killed": str|None,
@@ -10,6 +11,7 @@
 """
 from __future__ import annotations
 
+import platform
 import socket
 
 import hibernate
@@ -17,6 +19,17 @@ import lmstudio
 from config import Config
 
 SUPPORTED = ("status", "hibernate", "start_lmstudio", "stop_lmstudio")
+
+
+def _os_name() -> str:
+    """Человекочитаемое имя ОС сервера: «Windows 11», «macOS», «Linux»…
+    Без слова «Microsoft» (platform.system() и так возвращает «Windows»)."""
+    system = platform.system()
+    if system == "Windows":
+        return f"Windows {platform.release()}".strip()
+    if system == "Darwin":
+        return "macOS"
+    return system or "unknown OS"
 
 
 def run(command: str, cfg: Config) -> dict:
@@ -32,6 +45,7 @@ def run(command: str, cfg: Config) -> dict:
             "command": "status",
             "lmstudio_running": lmstudio.is_running(cfg.lm_process),
             "pc_name": socket.gethostname(),
+            "os_name": _os_name(),
         }
 
     if c == "hibernate":
