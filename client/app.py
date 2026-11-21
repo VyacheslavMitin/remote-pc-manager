@@ -1,5 +1,12 @@
-"""Главное окно клиента: кнопки и три независимых индикатора состояния."""
+"""Главное окно клиента: кнопки и три независимых индикатора состояния.
+
+Автопроверка: раз в 10 секунд сам опрашивает всё, что проверяется —
+пинг ПК + один статус-запрос к серверу (он заполняет и «Сервер», и «LM Studio»).
+Можно включить/выключить кнопкой «⏱ Авто».
+"""
 from __future__ import annotations
+
+import time
 
 import config
 from netcheck import ping_host
@@ -8,7 +15,7 @@ from settings_dialog import SettingsDialog
 from wol import send_wol
 from worker import Worker
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QMainWindow,
     QWidget,
@@ -56,10 +63,18 @@ class StatusRow(QWidget):
 
 
 class MainWindow(QMainWindow):
+    AUTO_INTERVAL_MS = 10_000
+
     def __init__(self):
         super().__init__()
         self.cfg = config.load()
         self._workers: list[Worker] = []
+
+        # состояние автопроверки
+        self._auto_enabled = True
+        self._auto_mode = False          # разрешить авто-строке переписывать статус
+        self._manual_inflight = 0        # сколько ручных операций сейчас в полёте
+        self._last: dict[str, object] = {"pc": None, "srv": None, "lm": None, "t": None}
 
         self.setWindowTitle("Удалённый ПК — менеджер")
         self.setMinimumSize(440, 620)
@@ -70,9 +85,17 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(16, 16, 16, 16)
         root.setSpacing(10)
 
+        # Заголовок + переключатель автопроверки
+        top = QHBoxLayout()
         title = QLabel("Управление удалённым ПК")
         title.setObjectName("title")
-        root.addWidget(title)
+        self.btn_auto = QPushButton("⏱  Авто: вкл")
+        self.btn_auto.setToolTip("Автопроверка состояния раз в 10 секунд")
+        self.btn_auto.clicked.connect(self._toggle_auto)
+        top.addWidget(title)
+        top.addStretch(1)
+        top.addWidget(self.btn_auto)
+        root.addLayout(top)
 
         # 1. Wake-on-LAN
         self.btn_wol = QPushButton("⏻  Пробудить ПК (Wake-on-LAN)")
@@ -121,6 +144,15 @@ class MainWindow(QMainWindow):
         self.status.setTextInteractionFlags(Qt.TextSelectableByMouse)
         root.addWidget(self.status)
 
+        # Автопроверка: раз в 10 секунд
+        self._timer = QTimer(self)
+        self._timer.setInterval(self.AUTO_INTERVAL_MS)
+        self._timer.timeout.connect(self._auto_tick)
+        self._timer.start()
+
+        # первая проверка сразу, чтобы не ждать 10 секунд на «⚪»
+        self._auto_tick()
+
     # ---------- инфраструктура ----------
     def _run(self, fn, ok=None, fail=None, on_finish=None) -> Worker:
         """Выполняет fn в фоновом потоке; ok(res)/fail(msg)/on_finish() — колбэки."""
@@ -149,93 +181,190 @@ class MainWindow(QMainWindow):
         w.start()
         return w
 
+    def closeEvent(self, event) -> None:
+        """При закрытии дожидаемся фоновых проверок, чтобы не уничтожить
+        QThread «на лету» (иначе Qt роняет процесс при выходе)."""
+        for w in list(self._workers):
+            if w.isRunning():
+                w.wait(6000)  # сеть максимум ~5с (timeout) + ping ~3.5с
+        super().closeEvent(event)
+
     def _drop(self, w) -> None:
         if w in self._workers:
             self._workers.remove(w)
 
     def _msg(self, text: str) -> None:
+        self._auto_mode = False  # ручное сообщение не давим авто-строкой
         self.status.setText(text)
 
     def _server(self):
         return self.cfg["server"]["host"], self.cfg["server"]["port"]
 
+    def _begin_manual(self) -> None:
+        self._manual_inflight += 1
+        self._auto_mode = False
+
+    def _finish_manual(self, row: StatusRow | None = None) -> None:
+        if row is not None:
+            row.btn.setEnabled(True)
+        self._manual_inflight = max(0, self._manual_inflight - 1)
+
+    # ---------- автопроверка ----------
+    def _auto_tick(self) -> None:
+        """Раз в 10 секунд: пинг ПК + один status (заполняет Сервер и LM Studio)."""
+        if not self._auto_enabled:
+            return
+        if self._manual_inflight > 0:
+            return  # идёт ручная операция — не наступаем на неё
+
+        self._auto_mode = True
+        host = self.cfg["pc"]["ip"]
+        self._run(
+            lambda: ping_host(host),
+            ok=lambda res: self._apply_pc(bool(res), "в сети" if res else "не отвечает на ping"),
+            fail=lambda msg: self._apply_pc(False, f"ошибка: {msg}"),
+        )
+        sh, sp = self._server()
+        self._run(
+            lambda: api_request(sh, sp, "status"),
+            ok=lambda res: self._apply_status(res),
+            fail=lambda msg: self._apply_status_down(msg),
+        )
+
+    def _apply_pc(self, ok: bool | None, tip: str = "") -> None:
+        self.row_pc.set_state(ok, tip)
+        self._last["pc"] = ok
+        self._last["t"] = time.strftime("%H:%M:%S")
+        self._refresh_status_line()
+
+    def _apply_status(self, res: dict) -> None:
+        self.row_srv.set_state(True, "сервер отвечает")
+        if "lmstudio_running" in res:
+            running = bool(res["lmstudio_running"])
+            self.row_lm.set_state(running, "запущена" if running else "не запущена")
+            self._last["lm"] = running
+        self._last["srv"] = True
+        self._last["t"] = time.strftime("%H:%M:%S")
+        self._refresh_status_line()
+
+    def _apply_status_down(self, msg: str) -> None:
+        self.row_srv.set_state(False, f"недоступен: {msg}")
+        self.row_lm.set_state(None, "сервер недоступен")
+        self._last["srv"] = False
+        self._last["lm"] = None
+        self._last["t"] = time.strftime("%H:%M:%S")
+        self._refresh_status_line()
+
+    def _refresh_status_line(self) -> None:
+        if not self._auto_mode:
+            return
+        l = self._last
+
+        def d(v):
+            return "🟢" if v is True else ("🔴" if v is False else "⚪")
+
+        line = (f"Автопроверка {l['t'] or '—'} · "
+                f"ПК {d(l['pc'])} · Сервер {d(l['srv'])} · LM {d(l['lm'])}")
+        if self.status.text() != line:
+            self.status.setText(line)
+
+    def _toggle_auto(self) -> None:
+        self._auto_enabled = not self._auto_enabled
+        self.btn_auto.setText("⏱  Авто: вкл" if self._auto_enabled else "⏱  Авто: выкл")
+        if self._auto_enabled:
+            self._msg("⏱ Автопроверка включена (каждые 10 секунд).")
+            self._auto_mode = True
+            self._auto_tick()
+        else:
+            self._auto_mode = False
+            self._msg("⏱ Автопроверка выключена.")
+
     # ---------- действия ----------
     def on_wol(self) -> None:
         mac = self.cfg["pc"]["mac"]
+        self._begin_manual()
         self._msg(f"Отправляю magic packet → {mac} …")
 
         def _ok(res):
             self._msg(f"✅ Magic packet: {res['to']} (MAC {res['mac']}, ×{res['sent']}).")
 
-        self._run(lambda: send_wol(mac, count=3), ok=_ok)
+        self._run(lambda: send_wol(mac, count=3), ok=_ok,
+                  on_finish=lambda: self._finish_manual())
 
     def on_check_pc(self, row: StatusRow) -> None:
         host = self.cfg["pc"]["ip"]
         row.btn.setEnabled(False)
+        self._begin_manual()
         self._msg(f"Пинг {host} …")
 
         def _ok(res):
-            row.set_state(bool(res), "в сети" if res else "не отвечает на ping")
+            self._apply_pc(bool(res), "в сети" if res else "не отвечает на ping")
             self._msg(f"ПК: {'🟢 в сети' if res else '🔴 не отвечает'} ({host})")
 
         def _fail(msg):
-            row.set_state(False, f"ошибка: {msg}")
+            self._apply_pc(False, f"ошибка: {msg}")
             self._msg(f"Ошибка проверки ПК: {msg}")
 
-        self._run(lambda: ping_host(host), ok=_ok, fail=_fail, on_finish=lambda: row.btn.setEnabled(True))
+        self._run(lambda: ping_host(host), ok=_ok, fail=_fail,
+                  on_finish=lambda: self._finish_manual(row))
 
     def on_check_server(self, row: StatusRow) -> None:
         host, port = self._server()
         row.btn.setEnabled(False)
+        self._begin_manual()
         self._msg(f"Запрашиваю статус сервера {host}:{port} …")
 
         def _ok(res):
-            row.set_state(True, f"сервер отвечает ({host}:{port})")
-            if "lmstudio_running" in res:  # ответ status везёт и состояние LM Studio
-                running = bool(res["lmstudio_running"])
-                self.row_lm.set_state(running, "запущена" if running else "не запущена")
+            self._apply_status(res)
             self._msg(f"Сервер: 🟢 отвечает ({host}:{port})")
 
         def _fail(msg):
-            row.set_state(False, f"недоступен: {msg}")
+            self._apply_status_down(msg)
             self._msg(f"Сервер: 🔴 недоступен — {msg}")
 
         self._run(lambda: api_request(host, port, "status"), ok=_ok, fail=_fail,
-                  on_finish=lambda: row.btn.setEnabled(True))
+                  on_finish=lambda: self._finish_manual(row))
 
     def on_check_lm(self, row: StatusRow) -> None:
         host, port = self._server()
         row.btn.setEnabled(False)
+        self._begin_manual()
         self._msg("Проверяю состояние LM Studio …")
 
         def _ok(res):
             running = bool(res.get("lmstudio_running"))
-            row.set_state(running, "запущена" if running else "не запущена")
+            self.row_lm.set_state(running, "запущена" if running else "не запущена")
+            self._last["lm"] = running
             self._msg(f"LM Studio: {'🟢 запущена' if running else '🔴 не запущена'}")
 
         def _fail(msg):
-            row.set_state(False, f"не проверено: {msg}")
+            self.row_lm.set_state(None, f"не проверено: {msg}")
+            self._last["lm"] = None
             self._msg(f"LM Studio: не проверено — {msg}")
 
         self._run(lambda: api_request(host, port, "status"), ok=_ok, fail=_fail,
-                  on_finish=lambda: row.btn.setEnabled(True))
+                  on_finish=lambda: self._finish_manual(row))
 
     def on_start_lm(self) -> None:
         host, port = self._server()
+        self._begin_manual()
         self._msg("Отправляю команду: запустить LM Studio …")
 
         def _ok(res):
-            extra = f" (PID {res['pid']})" if res.get("pid") else (f" ({res['opened']})" if res.get("opened") else "")
+            extra = (f" (PID {res['pid']})" if res.get("pid")
+                     else (f" ({res['opened']})" if res.get("opened") else ""))
             self._msg(f"✅ LM Studio: запущена{extra}.")
-            self.on_check_lm(self.row_lm)
+            self._check_lm_quiet()
 
         def _fail(msg):
             self._msg(f"❌ Не удалось запустить LM Studio: {msg}")
 
-        self._run(lambda: api_request(host, port, "start_lmstudio"), ok=_ok, fail=_fail)
+        self._run(lambda: api_request(host, port, "start_lmstudio"), ok=_ok, fail=_fail,
+                  on_finish=lambda: self._finish_manual())
 
     def on_stop_lm(self) -> None:
         host, port = self._server()
+        self._begin_manual()
         self._msg("Отправляю команду: остановить LM Studio …")
 
         def _ok(res):
@@ -243,12 +372,24 @@ class MainWindow(QMainWindow):
                 self._msg(f"✅ LM Studio: {res['note']}.")
             else:
                 self._msg(f"✅ LM Studio: остановлена ({res.get('killed')}).")
-            self.on_check_lm(self.row_lm)
+            self._check_lm_quiet()
 
         def _fail(msg):
             self._msg(f"❌ Не удалось остановить LM Studio: {msg}")
 
-        self._run(lambda: api_request(host, port, "stop_lmstudio"), ok=_ok, fail=_fail)
+        self._run(lambda: api_request(host, port, "stop_lmstudio"), ok=_ok, fail=_fail,
+                  on_finish=lambda: self._finish_manual())
+
+    def _check_lm_quiet(self) -> None:
+        """После вкл/выкл обновляет индикатор LM, не трогая статус-бар."""
+        host, port = self._server()
+        self._run(
+            lambda: api_request(host, port, "status"),
+            ok=lambda res: self.row_lm.set_state(
+                bool(res.get("lmstudio_running")),
+                "запущена" if res.get("lmstudio_running") else "не запущена"),
+            fail=lambda msg: self.row_lm.set_state(None, f"не проверено: {msg}"),
+        )
 
     def on_hibernate(self) -> None:
         host, port = self._server()
@@ -262,16 +403,19 @@ class MainWindow(QMainWindow):
         if ans != QMessageBox.Yes:
             self._msg("Отменено.")
             return
+        self._begin_manual()
         self._msg("Отправляю команду: гибернация …")
 
         def _ok(res):
             self.row_srv.set_state(False, "уходит в гибернацию")
+            self._last["srv"] = False
             self._msg("🌙 Гибернация запущена. Через секунду ПК погаснет.")
 
         def _fail(msg):
             self._msg(f"❌ Гибернация не выполнена: {msg}")
 
-        self._run(lambda: api_request(host, port, "hibernate", timeout=6.0), ok=_ok, fail=_fail)
+        self._run(lambda: api_request(host, port, "hibernate", timeout=6.0),
+                  ok=_ok, fail=_fail, on_finish=lambda: self._finish_manual())
 
     def on_settings(self) -> None:
         dlg = SettingsDialog(self.cfg, self)
@@ -279,3 +423,4 @@ class MainWindow(QMainWindow):
             self.cfg = dlg.values()
             config.save(self.cfg)
             self._msg("⚙ Настройки сохранены.")
+            self._auto_tick()  # сразу перепроверить с новыми настройками
