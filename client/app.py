@@ -16,11 +16,13 @@
 Шестерёнка настроек — в верхнем правом углу (только значок);
 внизу слева — строка состояния автопроверки (вкл/выкл + время следующей
 проверки), внизу справа — «IP: <адрес управляемого ПК>» (из настроек).
-Заголовок блока «LM Studio» — версия LM Studio на целевом ПК и
-загруженная модель: «LM Studio (v0.3.25, qwen2.5-7b-instruct)»,
-если сервер прислал lmstudio_version / lmstudio_model (модель —
-первый id из локального API-сервера LM Studio, GET /v1/models;
-остальные, например embedding-модели, в заголовок не идут);
+Заголовок блока «LM Studio» — версия LM Studio на целевом ПК,
+загруженная модель и её контекст:
+«LM Studio (v0.3.25, qwen2.5-7b-instruct, 64K)», если сервер прислал
+lmstudio_version / lmstudio_model / lmstudio_context (модель — первый id
+из локального API-сервера LM Studio, GET /v1/models, остальные, например
+embedding-модели, в заголовок не идут; контекст — контекст загруженной
+модели в токенах, GET /api/v0/models, 65536 показывается как «64K»);
 показывается только то, что прислал. Если ничего неизвестно
 (старый сервер или сервер недоступен) — просто «LM Studio»;
 состояние (запущена/не запущена) показывает индикатор-точка.
@@ -71,6 +73,22 @@ def _format_uptime(total: int) -> str:
         if len(parts) == 2:
             break
     return " ".join(parts) or "меньше минуты"
+
+
+def _format_context(tokens: int | str | None) -> str:
+    """Контекст модели (токены) для заголовка: 65536 -> «64K», 131072 -> «128K»;
+    не кратное 1024 — как есть (100000 -> «100000»); пусто/не число -> ''."""
+    if tokens is None:
+        return ""
+    try:
+        v = int(tokens)
+    except (TypeError, ValueError):
+        return ""
+    if v <= 0:
+        return ""
+    if v % 1024 == 0:
+        return f"{v // 1024}K"
+    return str(v)
 
 
 class StatusRow(QWidget):
@@ -293,14 +311,18 @@ class MainWindow(QMainWindow):
         self,
         version: str | None = None,
         model: str | None = None,
+        context: int | None = None,
     ) -> None:
-        """Заголовок блока «LM Studio» — версия и загруженная модель на ПК:
+        """Заголовок блока «LM Studio» — версия, загруженная модель и её
+        контекст на ПК:
 
-        «LM Studio (v0.3.25, qwen2.5-7b-instruct)», если сервер
-        прислал lmstudio_version / lmstudio_model; только то, что прислал
-        (версия без модели, модель без версии). Если ничего неизвестно
-        (старый сервер или сервер недоступен) — просто «LM Studio»;
-        состояние (запущена/не запущена) показывает индикатор-точка."""
+        «LM Studio (v0.3.25, qwen2.5-7b-instruct, 64K)», если сервер
+        прислал lmstudio_version / lmstudio_model / lmstudio_context;
+        только то, что прислал (версия без модели, модель без версии,
+        контекст — окно модели в токенах, 65536 показывается как «64K»).
+        Если ничего неизвестно (старый сервер или сервер недоступен) —
+        просто «LM Studio»; состояние (запущена/не запущена) показывает
+        индикатор-точка."""
         parts: list[str] = []
         v = (version or "").strip()
         if v:
@@ -310,6 +332,9 @@ class MainWindow(QMainWindow):
         m = (model or "").strip()
         if m:
             parts.append(m)
+        ctx = _format_context(context)
+        if ctx:
+            parts.append(ctx)
         if parts:
             self.title_lm.setText(f"LM Studio ({', '.join(parts)})")
         else:
@@ -386,7 +411,9 @@ class MainWindow(QMainWindow):
             running = bool(res["lmstudio_running"])
             self.row_lm.set_state(running, "запущена" if running else "не запущена")
             self._last["lm"] = running
-        self._set_lm_title(res.get("lmstudio_version"), res.get("lmstudio_model"))
+        self._set_lm_title(
+            res.get("lmstudio_version"), res.get("lmstudio_model"),
+            res.get("lmstudio_context"))
         self._set_pc_title(
             res.get("pc_name"), res.get("os_name"), res.get("uptime_s")
         )
@@ -463,7 +490,9 @@ class MainWindow(QMainWindow):
             running = bool(res.get("lmstudio_running"))
             self.row_lm.set_state(running, "запущена" if running else "не запущена")
             self._last["lm"] = running
-            self._set_lm_title(res.get("lmstudio_version"), res.get("lmstudio_model"))
+            self._set_lm_title(
+                res.get("lmstudio_version"), res.get("lmstudio_model"),
+                res.get("lmstudio_context"))
             self._set_pc_title(
             res.get("pc_name"), res.get("os_name"), res.get("uptime_s")
         )
@@ -526,8 +555,9 @@ class MainWindow(QMainWindow):
             self.row_lm.set_state(
                 bool(res.get("lmstudio_running")),
                 "запущена" if res.get("lmstudio_running") else "не запущена")
-            self._set_lm_title(res.get("lmstudio_version"),
-                               res.get("lmstudio_model"))
+            self._set_lm_title(
+                res.get("lmstudio_version"), res.get("lmstudio_model"),
+                res.get("lmstudio_context"))
             self._set_pc_title(
             res.get("pc_name"), res.get("os_name"), res.get("uptime_s")
         )

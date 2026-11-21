@@ -198,6 +198,47 @@ def loaded_model(port: int = 4321) -> str | None:
     return first
 
 
+def _get_json(url: str, timeout: float = 3.0) -> dict | None:
+    """GET url -> dict (JSON) или None при любой ошибке (соединение, HTTP, JSON)."""
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as r:
+            return json.loads(r.read().decode("utf-8", "replace"))
+    except Exception:
+        return None
+
+
+def loaded_context(port: int = 4321) -> int | None:
+    """Контекст загруженной модели (токены) через нативный API LM Studio.
+
+    GET http://127.0.0.1:<port>/api/v0/models (LM Studio >= 0.3.6):
+    {"data": [{"id": "qwen/qwen3.8-27b", "state": "loaded",
+               "max_context_length": 262144, "loaded_context_length": 65536}]} —
+    берём loaded_context_length у загруженной модели (state == «loaded»;
+    если state нет — любое вхождение loaded_context_length).
+    Фолбэк: GET /api/v1/models — models[].loaded_instances[].config.context_length.
+    None, если API недоступен, модель не загружена или контекст не прислан
+    (клиент просто не покажет контекст в заголовке).
+    """
+    try:
+        port = int(port)
+    except (TypeError, ValueError):
+        return None
+    data = _get_json(f"http://127.0.0.1:{port}/api/v0/models")
+    for m in ((data or {}).get("data") or []):
+        if m.get("state") and (m.get("state") or "").lower() != "loaded":
+            continue
+        v = m.get("loaded_context_length")
+        if isinstance(v, int) and v > 0:
+            return v
+    data = _get_json(f"http://127.0.0.1:{port}/api/v1/models")
+    for m in ((data or {}).get("models") or []):
+        for inst in (m.get("loaded_instances") or []):
+            v = (inst.get("config") or {}).get("context_length")
+            if isinstance(v, int) and v > 0:
+                return v
+    return None
+
+
 def start(exe: str) -> dict:
     exe = (exe or "").strip()
     if _system() == "Windows":
