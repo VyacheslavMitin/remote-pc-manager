@@ -17,6 +17,9 @@ logs/
 # PID файла фонового запуска (server/start_background.py)
 server/server.pid
 
+# Scratch: черновики тестов, не в репо
+.scratch/
+
 # macOS
 .DS_Store
 
