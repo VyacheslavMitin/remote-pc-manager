@@ -1,7 +1,8 @@
-"""Главное окно клиента: кнопки и три независимых индикатора состояния.
+"""Главное окно клиента: кнопки и два независимых индикатора состояния.
 
 Автопроверка: раз в 10 секунд сам опрашивает всё, что проверяется —
-пинг ПК + один статус-запрос к серверу (он заполняет и «Сервер», и «LM Studio»).
+пинг ПК + один status-запрос к серверу (проверяет LM Studio).
+Сервер и ПК — одна машина, поэтому отдельного индикатора «Сервер» нет.
 Можно включить/выключить кнопкой «⏱ Авто».
 """
 from __future__ import annotations
@@ -74,7 +75,7 @@ class MainWindow(QMainWindow):
         self._auto_enabled = True
         self._auto_mode = False          # разрешить авто-строке переписывать статус
         self._manual_inflight = 0        # сколько ручных операций сейчас в полёте
-        self._last: dict[str, object] = {"pc": None, "srv": None, "lm": None, "t": None}
+        self._last: dict[str, object] = {"pc": None, "lm": None, "t": None}
 
         self.setWindowTitle("Удалённый ПК — менеджер")
         self.setMinimumSize(440, 620)
@@ -103,20 +104,16 @@ class MainWindow(QMainWindow):
         self.btn_wol.clicked.connect(self.on_wol)
         root.addWidget(self.btn_wol)
 
-        # 2. Состояние ПК
+        # 2. Состояние ПК — единственный индикатор «машина жива» (сервер — та же машина)
         self.row_pc = StatusRow("ПК", self.on_check_pc)
         root.addWidget(self.row_pc)
 
-        # 3. Состояние сервера
-        self.row_srv = StatusRow("Сервер", self.on_check_server)
-        root.addWidget(self.row_srv)
-
-        # 4. Гибернация
+        # 3. Гибернация
         self.btn_hib = QPushButton("🌙  Гибернация")
         self.btn_hib.clicked.connect(self.on_hibernate)
         root.addWidget(self.btn_hib)
 
-        # 5/6. Управление LM Studio
+        # 4/5. Управление LM Studio
         self.btn_start = QPushButton("▶  Включить LM Studio")
         self.btn_start.setObjectName("success")
         self.btn_start.clicked.connect(self.on_start_lm)
@@ -127,11 +124,11 @@ class MainWindow(QMainWindow):
         self.btn_stop.clicked.connect(self.on_stop_lm)
         root.addWidget(self.btn_stop)
 
-        # 7. Состояние LM Studio
+        # 6. Состояние LM Studio (берётся из status-запроса к серверу)
         self.row_lm = StatusRow("LM Studio", self.on_check_lm)
         root.addWidget(self.row_lm)
 
-        # 8. Настройки
+        # 7. Настройки
         self.btn_settings = QPushButton("⚙  Настройки")
         self.btn_settings.clicked.connect(self.on_settings)
         root.addWidget(self.btn_settings)
@@ -211,7 +208,7 @@ class MainWindow(QMainWindow):
 
     # ---------- автопроверка ----------
     def _auto_tick(self) -> None:
-        """Раз в 10 секунд: пинг ПК + один status (заполняет Сервер и LM Studio)."""
+        """Раз в 10 секунд: пинг ПК + один status (проверяет LM Studio)."""
         if not self._auto_enabled:
             return
         if self._manual_inflight > 0:
@@ -238,19 +235,15 @@ class MainWindow(QMainWindow):
         self._refresh_status_line()
 
     def _apply_status(self, res: dict) -> None:
-        self.row_srv.set_state(True, "сервер отвечает")
         if "lmstudio_running" in res:
             running = bool(res["lmstudio_running"])
             self.row_lm.set_state(running, "запущена" if running else "не запущена")
             self._last["lm"] = running
-        self._last["srv"] = True
         self._last["t"] = time.strftime("%H:%M:%S")
         self._refresh_status_line()
 
     def _apply_status_down(self, msg: str) -> None:
-        self.row_srv.set_state(False, f"недоступен: {msg}")
         self.row_lm.set_state(None, "сервер недоступен")
-        self._last["srv"] = False
         self._last["lm"] = None
         self._last["t"] = time.strftime("%H:%M:%S")
         self._refresh_status_line()
@@ -264,7 +257,7 @@ class MainWindow(QMainWindow):
             return "🟢" if v is True else ("🔴" if v is False else "⚪")
 
         line = (f"Автопроверка {l['t'] or '—'} · "
-                f"ПК {d(l['pc'])} · Сервер {d(l['srv'])} · LM {d(l['lm'])}")
+                f"ПК {d(l['pc'])} · LM {d(l['lm'])}")
         if self.status.text() != line:
             self.status.setText(line)
 
@@ -306,23 +299,6 @@ class MainWindow(QMainWindow):
             self._msg(f"Ошибка проверки ПК: {msg}")
 
         self._run(lambda: ping_host(host), ok=_ok, fail=_fail,
-                  on_finish=lambda: self._finish_manual(row))
-
-    def on_check_server(self, row: StatusRow) -> None:
-        host, port = self._server()
-        row.btn.setEnabled(False)
-        self._begin_manual()
-        self._msg(f"Запрашиваю статус сервера {host}:{port} …")
-
-        def _ok(res):
-            self._apply_status(res)
-            self._msg(f"Сервер: 🟢 отвечает ({host}:{port})")
-
-        def _fail(msg):
-            self._apply_status_down(msg)
-            self._msg(f"Сервер: 🔴 недоступен — {msg}")
-
-        self._run(lambda: api_request(host, port, "status"), ok=_ok, fail=_fail,
                   on_finish=lambda: self._finish_manual(row))
 
     def on_check_lm(self, row: StatusRow) -> None:
@@ -396,7 +372,7 @@ class MainWindow(QMainWindow):
         ans = QMessageBox.question(
             self,
             "Гибернация",
-            f"Уснуть (hibernate) удалённый ПК?\nСервер ({host}:{port}) отработает ответ и погасит систему.",
+            f"Уснуть (hibernate) удалённый ПК?\nСистема отправит ответ и погаснет ({host}:{port}).",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
         )
@@ -407,8 +383,8 @@ class MainWindow(QMainWindow):
         self._msg("Отправляю команду: гибернация …")
 
         def _ok(res):
-            self.row_srv.set_state(False, "уходит в гибернацию")
-            self._last["srv"] = False
+            self.row_pc.set_state(False, "уходит в гибернацию")
+            self._last["pc"] = False
             self._msg("🌙 Гибернация запущена. Через секунду ПК погаснет.")
 
         def _fail(msg):
