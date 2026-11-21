@@ -47,7 +47,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QPushButton,
     QLabel,
-    QMessageBox,
 )
 
 # Запасное имя ОС сервера (целевой Windows-ПК) — на случай, если сервер
@@ -571,16 +570,6 @@ class MainWindow(QMainWindow):
 
     def on_hibernate(self) -> None:
         host, port = self._server()
-        ans = QMessageBox.question(
-            self,
-            "Гибернация",
-            f"Уснуть (hibernate) удалённый ПК?\nСистема отправит ответ и погаснет ({host}:{port}).",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
-        )
-        if ans != QMessageBox.Yes:
-            self._msg("Отменено.")
-            return
         self._begin_manual()
         self._msg("Отправляю команду: гибернация …")
 
