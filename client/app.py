@@ -8,7 +8,7 @@
 Пока идёт проверка, индикатор строки жёлтый.
 Раскладка: шестерёнка настроек — в верхнем правом углу (только значок);
 внизу слева — строка состояния автопроверки (вкл/выкл + время следующей
-проверки), внизу справа — «IP <адрес управляемого ПК>» (из настроек).
+проверки), внизу справа — «IP: <адрес управляемого ПК>» (из настроек).
 """
 from __future__ import annotations
 
@@ -158,7 +158,7 @@ class MainWindow(QMainWindow):
         self.status.setWordWrap(True)
         self.status.setTextInteractionFlags(Qt.TextSelectableByMouse)
         bottom.addWidget(self.status, 1)
-        self.lbl_ip = QLabel(f"IP {self.cfg['pc']['ip']}")
+        self.lbl_ip = QLabel(self._ip_text())
         self.lbl_ip.setObjectName("ip")
         self.lbl_ip.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.lbl_ip.setToolTip("IP управляемого ПК (из ⚙ Настроек)")
@@ -220,6 +220,11 @@ class MainWindow(QMainWindow):
     def _msg(self, text: str) -> None:
         self._auto_mode = False  # ручное сообщение не давим авто-строкой
         self.status.setText(text)
+
+    def _ip_text(self) -> str:
+        """Текст метки IP внизу справа — один формат в обоих местах
+        (при создании и после сохранения настроек)."""
+        return f"IP: {self.cfg['pc']['ip']}"
 
     def _server(self):
         # Сервер = тот же ПК: хост берём из pc.ip
@@ -435,7 +440,7 @@ class MainWindow(QMainWindow):
         if dlg.exec() == SettingsDialog.Accepted:
             self.cfg = dlg.values()
             config.save(self.cfg)
-            self.lbl_ip.setText(self.cfg["pc"]["ip"])
+            self.lbl_ip.setText(self._ip_text())
             # переприменить настройки автопроверки (включение + интервал)
             ac = self.cfg.get("auto_check", {})
             self._auto_enabled = bool(ac.get("enabled", True))
