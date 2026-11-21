@@ -167,14 +167,14 @@ curl -X POST http://<IP_Винды>:8787/command -H "Content-Type: application/j
 | Метод | Путь | Тело | Ответ |
 |---|---|---|---|
 | `GET` | `/` | — | `{"ok": true, "service": "rpcm-server"}` |
-| `GET` | `/status` | — | `{"ok": true, "command": "status", "lmstudio_running": true}` |
+| `GET` | `/status` | — | `{"ok": true, "command": "status", "lmstudio_running": true, "pc_name": "DESKTOP-ABC123"}` |
 | `POST` | `/command` | `{"command": "<имя>"}` | см. ниже |
 
 **Команды** (`POST /command`):
 
 | Команда | Ответ |
 |---|---|
-| `status` | `{"ok": true, "command": "status", "lmstudio_running": bool}` — сам ответ подтверждает доступность сервера. |
+| `status` | `{"ok": true, "command": "status", "lmstudio_running": bool, "pc_name": str}` — сам ответ подтверждает доступность сервера; `pc_name` — имя ПК (hostname), клиент показывает его в заголовке блока «ПК». |
 | `hibernate` | `{"ok": true, "command": "hibernate", "note": "гибернация запущена"}` — ответ уходит, **потом** машина уходит в гибернацию. |
 | `start_lmstudio` | `{"ok": true, "command": "start_lmstudio", "pid": int, "exe": "..."}` |
 | `stop_lmstudio` | `{"ok": true, "command": "stop_lmstudio", "killed": "LM Studio.exe"}` (или `"killed": null` + `note`, если не было запущено) |
@@ -321,7 +321,7 @@ python main.py
 **2) Проверка (с macOS/любой машины):**
 ```bash
 curl http://<IP_Винды>:8787/status
-# -> {"ok": true, "command": "status", "lmstudio_running": false}
+# -> {"ok": true, "command": "status", "lmstudio_running": false, "pc_name": "DESKTOP-ABC123"}
 ```
 
 **3) Клиент (macOS):**

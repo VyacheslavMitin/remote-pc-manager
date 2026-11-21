@@ -9,6 +9,8 @@
 Раскладка: главное окно разделено на два блока — «ПК» и «LM Studio»;
 в каждом блоке строка проверки состояния (индикатор + «Проверить»)
 сверху, под ней — кнопки действий.
+Заголовок блока «ПК» — «ПК (имя)», если сервер ответил (pc_name из
+status), иначе просто «ПК» (сервер недоступен).
 Шестерёнка настроек — в верхнем правом углу (только значок);
 внизу слева — строка состояния автопроверки (вкл/выкл + время следующей
 проверки), внизу справа — «IP: <адрес управляемого ПК>» (из настроек).
@@ -118,7 +120,8 @@ class MainWindow(QMainWindow):
         root.addLayout(title_row)
 
         # ── Блок «ПК» ── проверка состояния сверху, затем действия
-        block_pc, pc = self._block("ПК")
+        block_pc, pc, pc_title = self._block("ПК")
+        self.title_pc = pc_title
         self.row_pc = StatusRow("Состояние", self.on_check_pc)
         pc.addWidget(self.row_pc)
         power = QHBoxLayout()
@@ -135,7 +138,7 @@ class MainWindow(QMainWindow):
         root.addWidget(block_pc)
 
         # ── Блок «LM Studio» ── проверка состояния сверху, затем действия
-        block_lm, lmb = self._block("LM Studio")
+        block_lm, lmb, _lm_title = self._block("LM Studio")
         self.row_lm = StatusRow("Состояние", self.on_check_lm)
         lmb.addWidget(self.row_lm)
         lm = QHBoxLayout()
@@ -230,11 +233,18 @@ class MainWindow(QMainWindow):
         (при создании и после сохранения настроек)."""
         return f"IP: {self.cfg['pc']['ip']}"
 
-    def _block(self, title: str) -> tuple[QFrame, QVBoxLayout]:
+    def _set_pc_name(self, name: str | None) -> None:
+        """Заголовок блока «ПК»: «ПК (имя)», если сервер ответил и прислал
+        pc_name; иначе просто «ПК» (сервер недоступен или имя пустое)."""
+        name = (name or "").strip()
+        self.title_pc.setText(f"ПК ({name})" if name else "ПК")
+
+    def _block(self, title: str) -> tuple[QFrame, QVBoxLayout, QLabel]:
         """Собирает блок-панель: заголовок секции + внутренний layout.
 
-        Возвращает (frame, inner_layout) — содержимое (проверка, кнопки)
-        добавляется в inner_layout в нужном порядке."""
+        Возвращает (frame, inner_layout, title_label) — содержимое
+        (проверка, кнопки) добавляется в inner_layout в нужном порядке;
+        title_label — заголовок секции (можно менять динамически)."""
         frame = QFrame()
         frame.setObjectName("block")
         v = QVBoxLayout(frame)
@@ -243,7 +253,7 @@ class MainWindow(QMainWindow):
         h = QLabel(title)
         h.setObjectName("section")
         v.addWidget(h)
-        return frame, v
+        return frame, v, h
 
     def _server(self):
         # Сервер = тот же ПК: хост берём из pc.ip
@@ -300,12 +310,14 @@ class MainWindow(QMainWindow):
             running = bool(res["lmstudio_running"])
             self.row_lm.set_state(running, "запущена" if running else "не запущена")
             self._last["lm"] = running
+        self._set_pc_name(res.get("pc_name"))
         self._last["t"] = time.strftime("%H:%M:%S")
         self._refresh_status_line()
 
     def _apply_status_down(self, msg: str) -> None:
         self.row_lm.set_state(None, "сервер недоступен")
         self._last["lm"] = None
+        self._set_pc_name(None)
         self._last["t"] = time.strftime("%H:%M:%S")
         self._refresh_status_line()
 
@@ -371,11 +383,13 @@ class MainWindow(QMainWindow):
             running = bool(res.get("lmstudio_running"))
             self.row_lm.set_state(running, "запущена" if running else "не запущена")
             self._last["lm"] = running
+            self._set_pc_name(res.get("pc_name"))
             self._msg(f"LM Studio: {'🟢 запущена' if running else '🔴 не запущена'}")
 
         def _fail(msg):
             self.row_lm.set_state(None, f"не проверено: {msg}")
             self._last["lm"] = None
+            self._set_pc_name(None)
             self._msg(f"LM Studio: не проверено — {msg}")
 
         self._run(lambda: api_request(host, port, "status"), ok=_ok, fail=_fail,
@@ -423,13 +437,18 @@ class MainWindow(QMainWindow):
         """После вкл/выкл обновляет индикатор LM, не трогая статус-бар."""
         host, port = self._server()
         self.row_lm.set_checking()
-        self._run(
-            lambda: api_request(host, port, "status"),
-            ok=lambda res: self.row_lm.set_state(
+
+        def _ok(res):
+            self.row_lm.set_state(
                 bool(res.get("lmstudio_running")),
-                "запущена" if res.get("lmstudio_running") else "не запущена"),
-            fail=lambda msg: self.row_lm.set_state(None, f"не проверено: {msg}"),
-        )
+                "запущена" if res.get("lmstudio_running") else "не запущена")
+            self._set_pc_name(res.get("pc_name"))
+
+        def _fail(msg):
+            self.row_lm.set_state(None, f"не проверено: {msg}")
+            self._set_pc_name(None)
+
+        self._run(lambda: api_request(host, port, "status"), ok=_ok, fail=_fail)
 
     def on_hibernate(self) -> None:
         host, port = self._server()

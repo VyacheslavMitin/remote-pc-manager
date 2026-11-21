@@ -1,13 +1,16 @@
 """Диспетчер команд сервера.
 
 Поддерживаемые команды (тело POST /command: {"command": "<имя>"}):
-    status          -> {"ok": true, "lmstudio_running": bool}
+    status           {"ok": true, "command": "status", "lmstudio_running": bool,
+                      "pc_name": "<имя ПК (hostname)>"}
     hibernate       -> {"ok": true, ...}  (машина погаснет после ответа)
     start_lmstudio  -> {"ok": true, "pid": int, ...}
     stop_lmstudio   -> {"ok": true, "killed": str|None,
                         "note": "остановлена аккуратно|принудительно|не был запущен"}
 """
 from __future__ import annotations
+
+import socket
 
 import hibernate
 import lmstudio
@@ -28,6 +31,7 @@ def run(command: str, cfg: Config) -> dict:
             "ok": True,
             "command": "status",
             "lmstudio_running": lmstudio.is_running(cfg.lm_process),
+            "pc_name": socket.gethostname(),
         }
 
     if c == "hibernate":
