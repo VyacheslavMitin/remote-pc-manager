@@ -6,6 +6,8 @@
 индикатора «Сервер» нет.
 Включение автопроверки и её интервал настраиваются только в «⚙ Настройки».
 Пока идёт проверка, индикатор строки жёлтый.
+Раскладка: шестерёнка настроек — в верхнем правом углу (только значок);
+внизу окна — IP управляемого ПК (из настроек).
 """
 from __future__ import annotations
 
@@ -85,7 +87,7 @@ class MainWindow(QMainWindow):
         self._last: dict[str, object] = {"pc": None, "lm": None, "t": None}
 
         self.setWindowTitle("Удалённый ПК — менеджер")
-        self.setMinimumSize(440, 620)
+        self.setMinimumSize(440, 340)
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -93,47 +95,65 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(16, 16, 16, 16)
         root.setSpacing(10)
 
-        # Заголовок
+        # Заголовок + шестерёнка настроек (верхний правый угол, только значок)
+        title_row = QHBoxLayout()
+        title_row.setContentsMargins(0, 0, 0, 0)
+        title_row.setSpacing(8)
         title = QLabel("Управление удалённым ПК")
         title.setObjectName("title")
-        root.addWidget(title)
+        title_row.addWidget(title)
+        title_row.addStretch(1)
+        self.btn_settings = QPushButton("⚙")
+        self.btn_settings.setObjectName("gear")
+        self.btn_settings.setFixedSize(34, 34)
+        self.btn_settings.setCursor(Qt.PointingHandCursor)
+        self.btn_settings.setToolTip("Настройки")
+        self.btn_settings.clicked.connect(self.on_settings)
+        title_row.addWidget(self.btn_settings)
+        root.addLayout(title_row)
 
-        # 1. Wake-on-LAN
-        self.btn_wol = QPushButton("⏻  Пробудить ПК (Wake-on-LAN)")
+        # 1. Питание ПК: пробуждение + гибернация в одну строку
+        power = QHBoxLayout()
+        power.setSpacing(10)
+        self.btn_wol = QPushButton("⏻  Пробудить ПК")
         self.btn_wol.setObjectName("primary")
+        self.btn_wol.setToolTip("Отправить magic packet (Wake-on-LAN)")
         self.btn_wol.clicked.connect(self.on_wol)
-        root.addWidget(self.btn_wol)
+        power.addWidget(self.btn_wol, 3)
+        self.btn_hib = QPushButton("🌙  Гибернация")
+        self.btn_hib.clicked.connect(self.on_hibernate)
+        power.addWidget(self.btn_hib, 2)
+        root.addLayout(power)
 
         # 2. Состояние ПК — единственный индикатор «машина жива» (сервер — та же машина)
         self.row_pc = StatusRow("ПК", self.on_check_pc)
         root.addWidget(self.row_pc)
 
-        # 3. Гибернация
-        self.btn_hib = QPushButton("🌙  Гибернация")
-        self.btn_hib.clicked.connect(self.on_hibernate)
-        root.addWidget(self.btn_hib)
-
-        # 4/5. Управление LM Studio
+        # 3/4. Управление LM Studio — в одну строку
+        lm = QHBoxLayout()
+        lm.setSpacing(10)
         self.btn_start = QPushButton("▶  Включить LM Studio")
         self.btn_start.setObjectName("success")
         self.btn_start.clicked.connect(self.on_start_lm)
-        root.addWidget(self.btn_start)
-
+        lm.addWidget(self.btn_start, 1)
         self.btn_stop = QPushButton("⏹  Выключить LM Studio")
         self.btn_stop.setObjectName("danger")
         self.btn_stop.clicked.connect(self.on_stop_lm)
-        root.addWidget(self.btn_stop)
+        lm.addWidget(self.btn_stop, 1)
+        root.addLayout(lm)
 
-        # 6. Состояние LM Studio (берётся из status-запроса к серверу)
+        # 5. Состояние LM Studio (берётся из status-запроса к серверу)
         self.row_lm = StatusRow("LM Studio", self.on_check_lm)
         root.addWidget(self.row_lm)
 
-        # 7. Настройки
-        self.btn_settings = QPushButton("⚙  Настройки")
-        self.btn_settings.clicked.connect(self.on_settings)
-        root.addWidget(self.btn_settings)
-
         root.addStretch(1)
+
+        # 6. IP управляемого ПК (из настроек)
+        self.lbl_ip = QLabel(self.cfg["pc"]["ip"])
+        self.lbl_ip.setObjectName("ip")
+        self.lbl_ip.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.lbl_ip.setToolTip("IP управляемого ПК (из ⚙ Настроек)")
+        root.addWidget(self.lbl_ip)
 
         self.status = QLabel("Готов.")
         self.status.setObjectName("status")
@@ -396,6 +416,7 @@ class MainWindow(QMainWindow):
         if dlg.exec() == SettingsDialog.Accepted:
             self.cfg = dlg.values()
             config.save(self.cfg)
+            self.lbl_ip.setText(self.cfg["pc"]["ip"])
             # переприменить настройки автопроверки (включение + интервал)
             ac = self.cfg.get("auto_check", {})
             self._auto_enabled = bool(ac.get("enabled", True))

@@ -9,7 +9,19 @@ QWidget { background-color: #1e1e20; color: #e6e6e6; font-size: 13px; }
 QLabel#title { font-size: 17px; font-weight: 700; color: #f2f2f4; }
 QLabel#rowname { color: #cfcfd4; font-weight: 600; }
 QLabel#status { color: #9a9aa2; font-size: 12px; }
+QLabel#ip { color: #9a9aa2; font-size: 12px; }
 QLabel#dot { font-size: 15px; }
+
+QPushButton#gear {
+    background-color: transparent;
+    border: none;
+    border-radius: 8px;
+    font-size: 18px;
+    color: #cfcfd4;
+    padding: 0px;
+}
+QPushButton#gear:hover { background-color: #333338; color: #ffffff; }
+QPushButton#gear:pressed { background-color: #242428; }
 
 QPushButton {
     background-color: #2a2a2e;
