@@ -21,9 +21,14 @@ is_running() {
     ps -ef | grep -F "$ROOT/web/serve.py" | grep -v grep >/dev/null 2>&1
 }
 
-# Режим «restart»: сначала убиваем старое
+# Режим «restart»: сначала убиваем старое.
+# PID = первое числовое поле в строке: на QNAP (busybox) ps -ef начинает
+# с PID («32143 sonic ...»), на macOS — с USER («sonic 32143 ...»),
+# поэтому «awk '{print $2}'» корректен только на macOS и молча убивал
+# «kill sonic» на NAS. Берём первый подряд идущий блок цифр.
 if [ "${1:-}" = "restart" ]; then
-    ps -ef | grep -F "$ROOT/web/serve.py" | grep -v grep | awk '{print $2}' | while read -r p; do
+    for p in $(ps -ef | grep -F "$ROOT/web/serve.py" | grep -v grep \
+               | sed -n 's/^[^0-9]*\([0-9][0-9]*\).*/\1/p'); do
         kill "$p" 2>/dev/null || true
     done
     sleep 1
