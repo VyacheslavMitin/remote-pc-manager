@@ -5,7 +5,7 @@
                       "lmstudio_version": "<версия из VersionInfo exe, или null>",
                       "lmstudio_model": "<id загруженной модели (API, /v1/models), или null>",
                       "lmstudio_context": "<контекст модели (токены, API /api/v0/models), или null>",
-                      "lmstudio_vram_mb": "<VRAM модели — самый крупный процесс на GPU (PowerShell Get-Counter), МБ; null — не запущена / модель не загружена / нет PowerShell>",
+                      "lmstudio_vram_mb": "<VRAM модели — самый крупный процесс на GPU (PowerShell Get-Counter), МБ; null — не запущена / модель не загружена (нет контекста) / нет PowerShell>",
                       "ram_used_mb": "<занято RAM, МБ; null — не удалось прочитать>",
                       "ram_total_mb": "<всего RAM, МБ; null — не удалось прочитать>",
                       "pc_name": "<имя ПК (hostname)>",
@@ -90,6 +90,7 @@ def run(command: str, cfg: Config, args: dict | None = None) -> dict:
     if c == "status":
         running = lmstudio.is_running(cfg.lm_process)
         model = lmstudio.loaded_model(cfg.lm_api_port)
+        context = lmstudio.loaded_context(cfg.lm_api_port)
         mem = system.memory_info() or {}
         return {
             "ok": True,
@@ -97,12 +98,15 @@ def run(command: str, cfg: Config, args: dict | None = None) -> dict:
             "lmstudio_running": running,
             "lmstudio_version": lmstudio.version(cfg.lm_exe),
             "lmstudio_model": model,
-            "lmstudio_context": lmstudio.loaded_context(cfg.lm_api_port),
+            "lmstudio_context": context,
             # VRAM модели — самый крупный процесс на GPU (Get-Counter) —
-            # только когда LM Studio запущена И модель загружена
-            # (иначе в заголовке оказалась бы память чужого приложения).
+            # только когда LM Studio запущена И модель реально загружена
+            # (контекст известен: state == «loaded» в /api/v0/models).
+            # Одного `model` недостаточно: /v1/models отдаёт каталог
+            # скачанных моделей даже без загруженной — тогда в заголовок
+            # попала бы память чужого приложения.
             "lmstudio_vram_mb": (
-                system.gpu_process_vram_mb() if (running and model) else None
+                system.gpu_process_vram_mb() if (running and context) else None
             ),
             "ram_used_mb": mem.get("used_mb"),
             "ram_total_mb": mem.get("total_mb"),
