@@ -154,7 +154,9 @@ button:disabled {
 .row .grow1 { flex: 1 1 0; }
 
 /* ── Нижняя строка: статус слева, IP справа ───────────────────────────── */
-.bottom { display: flex; align-items: center; gap: 12px; min-height: 18px; }
+.bottom { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; min-height: 18px; }
+.bottom .col { display: flex; flex-direction: column; gap: 2px; }
+.bottom .auto { font-size: 11px; opacity: .7; }
 .status { color: var(--muted); font-size: 12px; flex: 1; word-break: break-word; }
 .ip { color: var(--muted); font-size: 12px; flex: none; user-select: text; }
 
@@ -249,8 +251,8 @@ input::selection { background: var(--accent); color: #fff; }
   <div class="block">
     <div class="section" id="titlePC">ПК</div>
     <div class="card">
-      <span class="rowname">Состояние</span>
       <span class="dot" id="dotPC" data-tip="не проверено">⚪</span>
+      <span class="rowname" id="statePC">—</span>
       <span class="spacer"></span>
       <button id="btnCheckPC">Проверить</button>
     </div>
@@ -264,8 +266,8 @@ input::selection { background: var(--accent); color: #fff; }
   <div class="block">
     <div class="section" id="titleLM">LM Studio</div>
     <div class="card">
-      <span class="rowname">Состояние</span>
       <span class="dot" id="dotLM" data-tip="не проверено">⚪</span>
+      <span class="rowname" id="stateLM">—</span>
       <span class="spacer"></span>
       <button id="btnCheckLM">Проверить</button>
     </div>
@@ -279,7 +281,10 @@ input::selection { background: var(--accent); color: #fff; }
 
   <!-- Низ: статус + IP -->
   <div class="bottom">
-    <span class="status" id="statusLine">Готов.</span>
+    <div class="col">
+      <span class="status" id="statusLine">Готов.</span>
+      <span class="auto" id="autoLine">Автопроверка: выключена</span>
+    </div>
     <span class="ip" id="ipLabel" data-tip="IP управляемого ПК (из ⚙ Настроек)">IP: —</span>
   </div>
 </div>
@@ -339,7 +344,13 @@ let autoEnabled = cfg.auto_check.enabled;
 let autoIntervalS = Math.max(1, cfg.auto_check.interval_s);
 let autoMode = false;              // разрешить авто-строке переписывать статус
 let manualInflight = 0;
-let last = { pc: null, lm: null, t: null };
+let last = { pc: null, lm: null, modelLoaded: false, t: null };
+function pcText(ok) { return ok === null || ok === undefined ? "—" : (ok ? "в сети" : "не в сети"); }
+function lmText(ok) { return ok === null || ok === undefined ? "—" : (ok ? "работает" : "остановлен"); }
+let checksRunning = 0;
+function beginCheck() { checksRunning += 1; }
+function endCheck() { checksRunning = Math.max(0, checksRunning - 1); }
+function isChecking() { return checksRunning > 0; }
 let timerId = null;
 let tickDeadline = null;           // Date — когда будет следующий тик (для «следующая в …»)
 
@@ -389,9 +400,10 @@ function setDot(el, ok, tip) {
   el.textContent = ok === null || ok === undefined ? "⚪" : (ok ? "🟢" : "🔴");
   el.dataset.tip = tip || "";
 }
-function setChecking(el) {
+function setChecking(el, stateEl) {
   el.textContent = "🟡";
   el.dataset.tip = "проверка…";
+  if (stateEl) stateEl.textContent = "проверка…";
 }
 
 /* ── заголовки блоков (дословно из app.py) ───────────────────────────── */
@@ -438,10 +450,20 @@ function autoLine() {
   }
   return "Автопроверка: включена";
 }
+function statusSummary() {
+  if (last.pc === false) return "ПК не отвечает.";
+  if (last.lm === false) return "LM Studio не запущен.";
+  if (last.lm === true) return last.modelLoaded ? "ПК в сети, LM Studio работает, модель загружена." : "ПК в сети, LM Studio работает.";
+  return last.pc === true ? "ПК в сети." : "—";
+}
 function refreshStatusLine() {
   if (!autoMode) return;
-  const line = autoLine();
+  const line = statusSummary();
   if ($("statusLine").textContent !== line) $("statusLine").textContent = line;
+}
+function refreshAutoLine() {
+  const line = autoLine();
+  if ($("autoLine").textContent !== line) $("autoLine").textContent = line;
 }
 function ipText() { return `IP: ${cfg.pc.ip}`; }
 function refreshIp() { $("ipLabel").textContent = ipText(); }
@@ -489,9 +511,11 @@ function serverBase() { return `http://${cfg.pc.ip}:${cfg.server.port}`; }
 /* ── применение результатов (дословно из app.py) ─────────────────────── */
 function applyPC(ok, tip = "") {
   setDot($("dotPC"), ok, tip);
+  $("statePC").textContent = pcText(ok);
   last.pc = ok;
   last.t = new Date();
   refreshStatusLine();
+  refreshAutoLine();
 }
 function applyStatus(res) {
   if ("lmstudio_running" in res) {
@@ -499,18 +523,24 @@ function applyStatus(res) {
     setDot($("dotLM"), running, running ? "запущена" : "не запущена");
     last.lm = running;
   }
+  last.modelLoaded = !!(res.lmstudio_model && String(res.lmstudio_model).trim());
+  $("stateLM").textContent = lmText(last.lm);
   setLmTitle(res.lmstudio_version, res.lmstudio_model, res.lmstudio_context, res.lmstudio_vram_mb);
   setPcTitle(res.pc_name, res.os_name, res.uptime_s, res.ram_used_mb, res.ram_total_mb);
   last.t = new Date();
   refreshStatusLine();
+  refreshAutoLine();
 }
 function applyStatusDown(msg) {
   setDot($("dotLM"), null, "сервер недоступен");
   last.lm = null;
+  last.modelLoaded = false;
+  $("stateLM").textContent = "—";
   setLmTitle(null);
   setPcTitle(null);
   last.t = new Date();
   refreshStatusLine();
+  refreshAutoLine();
 }
 
 /* ── счётчик ручных операций (как _begin/_finish_manual) ─────────────── */
@@ -518,7 +548,7 @@ function beginManual() { manualInflight++; autoMode = false; }
 function finishManual(btnEl) {
   if (btnEl) btnEl.disabled = false;
   manualInflight = Math.max(0, manualInflight - 1);
-  if (manualInflight === 0 && !autoEnabled) $("statusLine").textContent = autoLine();
+  refreshAutoLine();
 }
 
 /* ── автопроверка ────────────────────────────────────────────────────── */
@@ -526,8 +556,8 @@ async function autoTick() {
   if (!autoEnabled) return;
   if (manualInflight > 0) return;
   autoMode = true;
-  setChecking($("dotPC"));
-  setChecking($("dotLM"));
+  setChecking($("dotPC"), $("statePC"));
+  setChecking($("dotLM"), $("stateLM"));
 
   const pcP = pingPC()
     .then(res => applyPC(!!res, res ? "в сети" : "не отвечает на ping"))
@@ -559,7 +589,7 @@ async function onCheckPC() {
   const host = cfg.pc.ip;
   $("btnCheckPC").disabled = true;
   beginManual();
-  setChecking($("dotPC"));
+  setChecking($("dotPC"), $("statePC"));
   msg(`Пинг ${host} …`);
   try {
     const res = await pingPC();
@@ -575,21 +605,15 @@ async function onCheckPC() {
 async function onCheckLM() {
   $("btnCheckLM").disabled = true;
   beginManual();
-  setChecking($("dotLM"));
+  setChecking($("dotLM"), $("stateLM"));
   msg("Проверяю состояние LM Studio …");
   try {
     const res = await apiStatus();
+    applyStatus(res);
     const running = !!res.lmstudio_running;
-    setDot($("dotLM"), running, running ? "запущена" : "не запущена");
-    last.lm = running;
-    setLmTitle(res.lmstudio_version, res.lmstudio_model, res.lmstudio_context, res.lmstudio_vram_mb);
-    setPcTitle(res.pc_name, res.os_name, res.uptime_s, res.ram_used_mb, res.ram_total_mb);
     msg(`LM Studio: ${running ? "🟢 запущена" : "🔴 не запущена"}`);
   } catch (e) {
-    setDot($("dotLM"), null, `не проверено: ${e.message}`);
-    last.lm = null;
-    setLmTitle(null);
-    setPcTitle(null);
+    applyStatusDown(e.message);
     msg(`LM Studio: не проверено — ${e.message}`);
   }
   finishManual($("btnCheckLM"));
@@ -621,6 +645,7 @@ async function onHibernate() {
   try {
     await apiCommand("hibernate", {}, 6000);
     setDot($("dotPC"), false, "уходит в гибернацию");
+    $("statePC").textContent = "не в сети";
     last.pc = false;
     msg("🌙 Гибернация запущена. Через секунду ПК погаснет.");
   } catch (e) {
@@ -630,17 +655,12 @@ async function onHibernate() {
 }
 
 async function checkLmQuiet() {
-  setChecking($("dotLM"));
+  setChecking($("dotLM"), $("stateLM"));
   try {
     const res = await apiStatus();
-    const running = !!res.lmstudio_running;
-    setDot($("dotLM"), running, running ? "запущена" : "не запущена");
-    setLmTitle(res.lmstudio_version, res.lmstudio_model, res.lmstudio_context, res.lmstudio_vram_mb);
-    setPcTitle(res.pc_name, res.os_name, res.uptime_s, res.ram_used_mb, res.ram_total_mb);
+    applyStatus(res);
   } catch (e) {
-    setDot($("dotLM"), null, `не проверено: ${e.message}`);
-    setLmTitle(null);
-    setPcTitle(null);
+    applyStatusDown(e.message);
   }
 }
 
@@ -719,8 +739,8 @@ function saveSettings() {
   else {
     stopTimer();
     autoMode = false;
-    $("statusLine").textContent = autoLine();
   }
+  refreshAutoLine();
   closeSettings();
   msg("⚙ Настройки сохранены.");
   // порт LM Studio на сервер (как _push_lm_port в app.py)
@@ -759,7 +779,8 @@ function applyCfg(c) {
 }
 function startAuto() {
   if (autoEnabled) startTimer();
-  else { stopTimer(); autoMode = false; $("statusLine").textContent = autoLine(); }
+  else { stopTimer(); autoMode = false; }
+  refreshAutoLine();
 }
 async function loadConfig() {
   try {
