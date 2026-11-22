@@ -76,6 +76,8 @@ body {
 /* ── Заголовок + шестерёнка ───────────────────────────────────────────── */
 .title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .title { font-size: 17px; font-weight: 700; color: var(--title); }
+/* IP под заголовком (как в iOS): строка, текст слева, мелкий, приглушённый */
+.ip-row { display: flex; align-items: center; }
 .gear {
   width: 51px; height: 51px;
   display: grid; place-items: center;
@@ -247,6 +249,11 @@ input::selection { background: var(--accent); color: #fff; }
     </button>
   </div>
 
+  <!-- IP под заголовком (как в iOS) -->
+  <div class="ip-row">
+    <span class="ip" id="ipLabel" data-tip="IP управляемого ПК (из ⚙ Настроек)">IP: —</span>
+  </div>
+
   <!-- Блок «ПК» -->
   <div class="block">
     <div class="section" id="titlePC">ПК</div>
@@ -279,13 +286,12 @@ input::selection { background: var(--accent); color: #fff; }
 
   <div style="flex:1;"></div>
 
-  <!-- Низ: статус + IP -->
+  <!-- Низ: статус (IP — под заголовком) -->
   <div class="bottom">
     <div class="col">
       <span class="status" id="statusLine">Готов.</span>
       <span class="auto" id="autoLine">Автопроверка: выключена</span>
     </div>
-    <span class="ip" id="ipLabel" data-tip="IP управляемого ПК (из ⚙ Настроек)">IP: —</span>
   </div>
 </div>
 
