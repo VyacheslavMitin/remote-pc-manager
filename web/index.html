@@ -76,8 +76,9 @@ body {
 /* ── Заголовок + шестерёнка ───────────────────────────────────────────── */
 .title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .title { font-size: 17px; font-weight: 700; color: var(--title); }
-/* IP под заголовком (как в iOS): строка, текст слева, мелкий, приглушённый */
-.ip-row { display: flex; align-items: center; }
+/* IP под заголовком (как в iOS): строка, текст слева, мелкий, приглушённый;
+   отступ к заголовку плотный (как на iPhone) */
+.ip-row { display: flex; align-items: center; margin-top: -4px; }
 .gear {
   width: 51px; height: 51px;
   display: grid; place-items: center;
