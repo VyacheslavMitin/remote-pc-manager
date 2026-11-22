@@ -1,35 +1,47 @@
 #!/bin/sh
-# Разворачивает/обновляет remote-pc-manager на QNAP: git clone/pull из GitHub
-# + создаёт client/config.json из шаблона, если его нет.
+# Разворачивает/обновляет remote-pc-manager на QNAP: свежий master из GitHub
+# (tarball через curl — git на QNAP не умеет https: нет git-remote-https).
+# Обновление = скачать свежий tarball, заменить каталог; client/config.json
+# переживает обновление.
 #
-# Запуск (на NAS, из shell):
+# Использование (на NAS):
 #   sh web/deploy.sh
 #
-# QNAP: git живёт в /opt/bin (не в дефолтном PATH) — полный путь по умолчанию.
+# QNAP: curl — /sbin/curl, tar — busybox.
 set -eu
 
-GIT="${RPCM_GIT:-/opt/bin/git}"
-REPO="${RPCM_REPO:-https://github.com/VyacheslavMitin/remote-pc-manager.git}"
+REPO="${RPCM_REPO:-VyacheslavMitin/remote-pc-manager}"
+BRANCH="${RPCM_BRANCH:-master}"
 DEST="${RPCM_DEST:-/share/homes/sonic/remote-pc-web}"
+CURL="${RPCM_CURL:-curl}"
+URL="https://codeload.github.com/${REPO}/tar.gz/refs/heads/${BRANCH}"
+TMP="${TMPDIR:-/tmp}"
+TGZ="$TMP/rpcm-$$-download.tgz"
+SRC="$TMP/${REPO##*/}-${BRANCH}"
+CONF="$TMP/rpcm-$$-config.json"
 
-# Каталог существует, но это не git-репо (например, старая копия) — не топим его
-if [ -e "$DEST" ] && [ ! -d "$DEST/.git" ]; then
-    echo "✗ $DEST уже существует, но это не git-репозиторий." >&2
-    echo "  Уберите/переименуйте его и запустите заново." >&2
-    exit 1
+# 1) Скачиваем. DEST трогаем только после успешной загрузки.
+"$CURL" -sfL --connect-timeout 10 -m 300 "$URL" -o "$TGZ"
+
+# 2) Распаковка (в /tmp, чтобы не зависеть от состояния DEST)
+rm -rf "$SRC"
+tar xzf "$TGZ" -C "$TMP"
+
+# 3) Смена каталога, сохраняя client/config.json
+if [ -f "$DEST/client/config.json" ]; then
+    mv "$DEST/client/config.json" "$CONF"
+fi
+rm -rf "$DEST"
+mv "$SRC" "$DEST"
+if [ -f "$CONF" ]; then
+    mv "$CONF" "$DEST/client/config.json"
 fi
 
-if [ -d "$DEST/.git" ]; then
-    "$GIT" -C "$DEST" pull --ff-only
-else
-    "$GIT" clone --branch master "$REPO" "$DEST"
-fi
-
-# client/config.json в репо не лежит (.gitignore): создаём из шаблона, если нет.
-# Реальные IP/MAC вписываются один раз; pull'ы этот файл не трогают (untracked).
+# 4) Если config.json всё же нет — создаём из шаблона
 if [ ! -f "$DEST/client/config.json" ]; then
     cp "$DEST/client/config.example.json" "$DEST/client/config.json"
     echo "⚠ Впишите реальные IP/MAC: $DEST/client/config.json"
 fi
 
+rm -f "$TGZ"
 echo "OK: $DEST"
