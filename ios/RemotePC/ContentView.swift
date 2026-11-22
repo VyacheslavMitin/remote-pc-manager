@@ -13,16 +13,16 @@ struct ContentView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 14) {
-                    Text("IP: \(model.cfg.pcIP)")
-                        .font(.system(size: 11))
-                        .foregroundColor(Theme.muted)
-                    pcSection
-                    lmSection
+            VStack(spacing: 0) {
+                ipHeader
+                ScrollView {
+                    VStack(spacing: 14) {
+                        pcSection
+                        lmSection
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.top, 4)
                 }
-                .padding(.horizontal, 14)
-                .padding(.top, 6)
             }
             .background(Theme.bg.ignoresSafeArea())
             .navigationTitle("Управление удалённым ПК")
@@ -49,6 +49,19 @@ struct ContentView: View {
             // iOS: фоновый поллинг запрещён — проверяем, пока приложение открыто
             if phase == .active { model.startAutoCheck() } else { model.stopAutoCheck() }
         }
+    }
+
+    // MARK: - IP под заголовком
+
+    private var ipHeader: some View {
+        HStack {
+            Text("IP: \(model.cfg.pcIP)")
+                .font(.system(size: 11))
+                .foregroundColor(Theme.muted)
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
     }
 
     // MARK: - секции
@@ -134,9 +147,10 @@ struct ContentView: View {
             Text(model.autoLine)
                 .font(.system(size: 11))
         }
-        .foregroundColor(Theme.muted)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
+        .foregroundColor(Theme.muted)
         .background(Theme.bg2)
     }
 }
