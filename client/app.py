@@ -9,20 +9,23 @@
 Раскладка: главное окно разделено на два блока — «ПК» и «LM Studio»;
 в каждом блоке строка проверки состояния (индикатор + «Проверить»)
 сверху, под ней — кнопки действий.
-Заголовок блока «ПК» — «ПК (имя, ОС, аптайм)», если сервер ответил
-(pc_name, os_name, uptime_s из status; аптайм форматируется без секунд,
-ОС — из ответа сервера, либо константа Windows 11, если сервер не
-прислал её), иначе просто «ПК» (сервер недоступен).
+Заголовок блока «ПК» — «ПК (имя, ОС, аптайм, RAM 18.4/31.9 ГБ)», если
+сервер ответил (pc_name, os_name, uptime_s, ram_used_mb/ram_total_mb
+из status; аптайм форматируется без секунд, ОС — из ответа сервера, либо
+константа Windows 11, если сервер не прислал её, RAM — занято/всего в
+гигабайтах), иначе просто «ПК» (сервер недоступен).
 Шестерёнка настроек — в верхнем правом углу (только значок);
 внизу слева — строка состояния автопроверки (вкл/выкл + время следующей
 проверки), внизу справа — «IP: <адрес управляемого ПК>» (из настроек).
 Заголовок блока «LM Studio» — версия LM Studio на целевом ПК,
-загруженная модель и её контекст:
-«LM Studio (v0.3.25, qwen2.5-7b-instruct, 64K)», если сервер прислал
-lmstudio_version / lmstudio_model / lmstudio_context (модель — первый id
-из локального API-сервера LM Studio, GET /v1/models, остальные, например
-embedding-модели, в заголовок не идут; контекст — контекст загруженной
-модели в токенах, GET /api/v0/models, 65536 показывается как «64K»);
+загруженная модель и её контекст, VRAM, занятый процессом LM Studio:
+«LM Studio (v0.3.25, qwen2.5-7b-instruct, 64K, VRAM 16.0 ГБ)», если
+сервер прислал lmstudio_version / lmstudio_model / lmstudio_context /
+lmstudio_vram_mb (модель — первый id из локального API-сервера LM Studio,
+GET /v1/models, остальные, например embedding-модели, в заголовок не
+идут; контекст — контекст загруженной модели в токенах, GET
+/api/v0/models, 65536 показывается как «64K»; VRAM — nvidia-smi,
+суммарно по процессам LM Studio, в гигабайтах);
 показывается только то, что прислал. Если ничего неизвестно
 (старый сервер или сервер недоступен) — просто «LM Studio»;
 состояние (запущена/не запущена) показывает индикатор-точка.
@@ -88,6 +91,43 @@ def _format_context(tokens: int | str | None) -> str:
     if v % 1024 == 0:
         return f"{v // 1024}K"
     return str(v)
+
+
+def _format_gb(mb: int | str | None) -> str:
+    """МБ для заголовка: 18841 -> «18.4 ГБ». Пусто/не число -> '' (часть
+    заголовка не показывать)."""
+    if mb is None or mb == "":
+        return ""
+    try:
+        v = int(mb)
+    except (TypeError, ValueError):
+        return ""
+    if v < 0:
+        return ""
+    return f"{v / 1024:.1f} ГБ"
+
+
+def _format_ram(used_mb: int | str | None, total_mb: int | str | None) -> str:
+    """RAM для заголовка: «RAM 18.4/31.9 ГБ» (занято/всего).
+
+    Если известно только «занято» — «RAM 18.4 ГБ»; известно только
+    «всего» или ничего — '' (часть заголовка не показывать).
+    """
+    def _n(x: int | str | None) -> int | None:
+        if x is None or x == "":
+            return None
+        try:
+            v = int(x)
+        except (TypeError, ValueError):
+            return None
+        return v if v >= 0 else None
+
+    u, t = _n(used_mb), _n(total_mb)
+    if u is not None and t is not None:
+        return f"RAM {u / 1024:.1f}/{t / 1024:.1f} ГБ"
+    if u is not None:
+        return f"RAM {u / 1024:.1f} ГБ"
+    return ""
 
 
 class StatusRow(QWidget):
@@ -289,12 +329,16 @@ class MainWindow(QMainWindow):
         name: str | None,
         os_name: str | None = None,
         uptime_s: int | None = None,
+        ram_used_mb: int | None = None,
+        ram_total_mb: int | None = None,
     ) -> None:
-        """Заголовок блока «ПК»: «ПК (имя, ОС, аптайм)», если сервер ответил
-        (pc_name + os_name + uptime_s из status). ОС — из ответа сервера, либо
-        при старой версии сервера — константа DEFAULT_PC_OS. Аптайм форматируется
-        без секунд (uptime_s — секунды). Сервер недоступен или имя пустое —
-        просто «ПК»."""
+        """Заголовок блока «ПК»: «ПК (имя, ОС, аптайм, RAM 18.4/31.9 ГБ)»,
+        если сервер ответил (pc_name + os_name + uptime_s +
+        ram_used_mb/ram_total_mb из status). ОС — из ответа сервера, либо
+        при старой версии сервера — константа DEFAULT_PC_OS. Аптайм
+        форматируется без секунд (uptime_s — секунды). RAM — занято/всего
+        в ГБ; если сервер не прислал (старая версия) — части заголовка
+        нет. Сервер недоступен или имя пустое — просто «ПК»."""
         name = (name or "").strip()
         if not name:
             self.title_pc.setText("ПК")
@@ -304,6 +348,9 @@ class MainWindow(QMainWindow):
         parts.append(os_text)
         if uptime_s is not None:
             parts.append(_format_uptime(uptime_s))
+        ram = _format_ram(ram_used_mb, ram_total_mb)
+        if ram:
+            parts.append(ram)
         self.title_pc.setText(f"ПК ({', '.join(parts)})")
 
     def _set_lm_title(
@@ -311,17 +358,19 @@ class MainWindow(QMainWindow):
         version: str | None = None,
         model: str | None = None,
         context: int | None = None,
+        vram_mb: int | None = None,
     ) -> None:
         """Заголовок блока «LM Studio» — версия, загруженная модель и её
-        контекст на ПК:
+        контекст на ПК, VRAM процесса LM Studio:
 
-        «LM Studio (v0.3.25, qwen2.5-7b-instruct, 64K)», если сервер
-        прислал lmstudio_version / lmstudio_model / lmstudio_context;
-        только то, что прислал (версия без модели, модель без версии,
-        контекст — окно модели в токенах, 65536 показывается как «64K»).
-        Если ничего неизвестно (старый сервер или сервер недоступен) —
-        просто «LM Studio»; состояние (запущена/не запущена) показывает
-        индикатор-точка."""
+        «LM Studio (v0.3.25, qwen2.5-7b-instruct, 64K, VRAM 16.0 ГБ)»,
+        если сервер прислал lmstudio_version / lmstudio_model /
+        lmstudio_context / lmstudio_vram_mb; только то, что прислал
+        (версия без модели, модель без версии, контекст — окно модели в
+        токенах, 65536 показывается как «64K», VRAM — ГБ, занятые
+        процессом). Если ничего неизвестно (старый сервер или сервер
+        недоступен) — просто «LM Studio»; состояние (запущена/не
+        запущена) показывает индикатор-точка."""
         parts: list[str] = []
         v = (version or "").strip()
         if v:
@@ -334,6 +383,9 @@ class MainWindow(QMainWindow):
         ctx = _format_context(context)
         if ctx:
             parts.append(ctx)
+        vr = _format_gb(vram_mb)
+        if vr:
+            parts.append(f"VRAM {vr}")
         if parts:
             self.title_lm.setText(f"LM Studio ({', '.join(parts)})")
         else:
@@ -412,9 +464,10 @@ class MainWindow(QMainWindow):
             self._last["lm"] = running
         self._set_lm_title(
             res.get("lmstudio_version"), res.get("lmstudio_model"),
-            res.get("lmstudio_context"))
+            res.get("lmstudio_context"), res.get("lmstudio_vram_mb"))
         self._set_pc_title(
-            res.get("pc_name"), res.get("os_name"), res.get("uptime_s")
+            res.get("pc_name"), res.get("os_name"), res.get("uptime_s"),
+            res.get("ram_used_mb"), res.get("ram_total_mb")
         )
         self._last["t"] = time.strftime("%H:%M:%S")
         self._refresh_status_line()
@@ -491,10 +544,11 @@ class MainWindow(QMainWindow):
             self._last["lm"] = running
             self._set_lm_title(
                 res.get("lmstudio_version"), res.get("lmstudio_model"),
-                res.get("lmstudio_context"))
+                res.get("lmstudio_context"), res.get("lmstudio_vram_mb"))
             self._set_pc_title(
-            res.get("pc_name"), res.get("os_name"), res.get("uptime_s")
-        )
+                res.get("pc_name"), res.get("os_name"), res.get("uptime_s"),
+                res.get("ram_used_mb"), res.get("ram_total_mb")
+            )
             self._msg(f"LM Studio: {'🟢 запущена' if running else '🔴 не запущена'}")
 
         def _fail(msg):
@@ -556,10 +610,11 @@ class MainWindow(QMainWindow):
                 "запущена" if res.get("lmstudio_running") else "не запущена")
             self._set_lm_title(
                 res.get("lmstudio_version"), res.get("lmstudio_model"),
-                res.get("lmstudio_context"))
+                res.get("lmstudio_context"), res.get("lmstudio_vram_mb"))
             self._set_pc_title(
-            res.get("pc_name"), res.get("os_name"), res.get("uptime_s")
-        )
+                res.get("pc_name"), res.get("os_name"), res.get("uptime_s"),
+                res.get("ram_used_mb"), res.get("ram_total_mb")
+            )
 
         def _fail(msg):
             self.row_lm.set_state(None, f"не проверено: {msg}")

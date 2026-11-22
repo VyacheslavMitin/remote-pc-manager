@@ -5,6 +5,9 @@
                       "lmstudio_version": "<версия из VersionInfo exe, или null>",
                       "lmstudio_model": "<id загруженной модели (API, /v1/models), или null>",
                       "lmstudio_context": "<контекст модели (токены, API /api/v0/models), или null>",
+                      "lmstudio_vram_mb": "<VRAM процесса LM Studio (nvidia-smi), МБ; null — нет NVIDIA/процесс не запущен>",
+                      "ram_used_mb": "<занято RAM, МБ; null — не удалось прочитать>",
+                      "ram_total_mb": "<всего RAM, МБ; null — не удалось прочитать>",
                       "pc_name": "<имя ПК (hostname)>",
                       "os_name": "<ОС сервера, напр. «Windows 11»>",
                       "uptime_s": <секунд с момента запуска системы, int|null>}
@@ -26,6 +29,7 @@ import time
 
 import hibernate
 import lmstudio
+import system
 from config import Config, save as save_config
 
 SUPPORTED = ("status", "hibernate", "start_lmstudio", "stop_lmstudio", "set_lm_port")
@@ -78,13 +82,20 @@ def run(command: str, cfg: Config, args: dict | None = None) -> dict:
         )
 
     if c == "status":
+        running = lmstudio.is_running(cfg.lm_process)
+        mem = system.memory_info() or {}
         return {
             "ok": True,
             "command": "status",
-            "lmstudio_running": lmstudio.is_running(cfg.lm_process),
+            "lmstudio_running": running,
             "lmstudio_version": lmstudio.version(cfg.lm_exe),
             "lmstudio_model": lmstudio.loaded_model(cfg.lm_api_port),
             "lmstudio_context": lmstudio.loaded_context(cfg.lm_api_port),
+            # VRAM процесса LM Studio — только когда он запущен (иначе
+            # nvidia-smi не покажет его и «VRAM 0» в заголовке обманет).
+            "lmstudio_vram_mb": system.process_vram_mb(cfg.lm_process) if running else None,
+            "ram_used_mb": mem.get("used_mb"),
+            "ram_total_mb": mem.get("total_mb"),
             "pc_name": socket.gethostname(),
             "os_name": _os_name(),
             "uptime_s": _uptime_seconds(),

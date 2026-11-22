@@ -368,6 +368,24 @@ function formatContext(tokens) {
   return String(v);
 }
 
+function formatGb(mb) {
+  if (mb === null || mb === undefined) return "";
+  const v = parseInt(mb, 10);
+  if (!Number.isFinite(v) || v < 0) return "";
+  return `${(v / 1024).toFixed(1)} ГБ`;
+}
+
+function formatRam(usedMb, totalMb) {
+  const n = x => {
+    const v = parseInt(x, 10);
+    return Number.isFinite(v) && v >= 0 ? v : null;
+  };
+  const u = n(usedMb), t = n(totalMb);
+  if (u !== null && t !== null) return `RAM ${(u / 1024).toFixed(1)}/${(t / 1024).toFixed(1)} ГБ`;
+  if (u !== null) return `RAM ${(u / 1024).toFixed(1)} ГБ`;
+  return "";
+}
+
 /* ── индикаторы ───────────────────────────────────────────────────────── */
 function setDot(el, ok, tip) {
   el.textContent = ok === null || ok === undefined ? "⚪" : (ok ? "🟢" : "🔴");
@@ -379,16 +397,18 @@ function setChecking(el) {
 }
 
 /* ── заголовки блоков (дословно из app.py) ───────────────────────────── */
-function setPcTitle(name, osName, uptimeS) {
+function setPcTitle(name, osName, uptimeS, ramUsedMb, ramTotalMb) {
   name = (name || "").trim();
   if (!name) { $("titlePC").textContent = "ПК"; return; }
   const parts = [name];
   parts.push((osName || "").trim() || DEFAULT_PC_OS);
   if (uptimeS !== null && uptimeS !== undefined) parts.push(formatUptime(uptimeS));
+  const ram = formatRam(ramUsedMb, ramTotalMb);
+  if (ram) parts.push(ram);
   $("titlePC").textContent = `ПК (${parts.join(", ")})`;
 }
 
-function setLmTitle(version, model, context) {
+function setLmTitle(version, model, context, vramMb) {
   const parts = [];
   let v = (version || "").trim();
   if (v) { if (!v.toLowerCase().startsWith("v")) v = `v${v}`; parts.push(v); }
@@ -396,6 +416,8 @@ function setLmTitle(version, model, context) {
   if (m) parts.push(m);
   const ctx = formatContext(context);
   if (ctx) parts.push(ctx);
+  const vr = formatGb(vramMb);
+  if (vr) parts.push(`VRAM ${vr}`);
   $("titleLM").textContent = parts.length ? `LM Studio (${parts.join(", ")})` : "LM Studio";
 }
 
@@ -475,8 +497,8 @@ function applyStatus(res) {
     setDot($("dotLM"), running, running ? "запущена" : "не запущена");
     last.lm = running;
   }
-  setLmTitle(res.lmstudio_version, res.lmstudio_model, res.lmstudio_context);
-  setPcTitle(res.pc_name, res.os_name, res.uptime_s);
+  setLmTitle(res.lmstudio_version, res.lmstudio_model, res.lmstudio_context, res.lmstudio_vram_mb);
+  setPcTitle(res.pc_name, res.os_name, res.uptime_s, res.ram_used_mb, res.ram_total_mb);
   last.t = new Date();
   refreshStatusLine();
 }
@@ -558,8 +580,8 @@ async function onCheckLM() {
     const running = !!res.lmstudio_running;
     setDot($("dotLM"), running, running ? "запущена" : "не запущена");
     last.lm = running;
-    setLmTitle(res.lmstudio_version, res.lmstudio_model, res.lmstudio_context);
-    setPcTitle(res.pc_name, res.os_name, res.uptime_s);
+    setLmTitle(res.lmstudio_version, res.lmstudio_model, res.lmstudio_context, res.lmstudio_vram_mb);
+    setPcTitle(res.pc_name, res.os_name, res.uptime_s, res.ram_used_mb, res.ram_total_mb);
     msg(`LM Studio: ${running ? "🟢 запущена" : "🔴 не запущена"}`);
   } catch (e) {
     setDot($("dotLM"), null, `не проверено: ${e.message}`);
@@ -611,8 +633,8 @@ async function checkLmQuiet() {
     const res = await apiStatus();
     const running = !!res.lmstudio_running;
     setDot($("dotLM"), running, running ? "запущена" : "не запущена");
-    setLmTitle(res.lmstudio_version, res.lmstudio_model, res.lmstudio_context);
-    setPcTitle(res.pc_name, res.os_name, res.uptime_s);
+    setLmTitle(res.lmstudio_version, res.lmstudio_model, res.lmstudio_context, res.lmstudio_vram_mb);
+    setPcTitle(res.pc_name, res.os_name, res.uptime_s, res.ram_used_mb, res.ram_total_mb);
   } catch (e) {
     setDot($("dotLM"), null, `не проверено: ${e.message}`);
     setLmTitle(null);
