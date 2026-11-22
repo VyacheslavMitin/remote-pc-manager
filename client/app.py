@@ -213,6 +213,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(440, 340)
 
         central = QWidget()
+        central.setObjectName("central")
         self.setCentralWidget(central)
         root = QVBoxLayout(central)
         root.setContentsMargins(16, 16, 16, 16)
@@ -234,6 +235,14 @@ class MainWindow(QMainWindow):
         title_row.addStretch(1)
         title_row.addWidget(self.btn_settings)
         root.addLayout(title_row)
+
+        # IP управляемого ПК (из настроек) — строка прямо под заголовком
+        self.lbl_ip = QLabel(self._ip_text())
+        self.lbl_ip.setObjectName("ip")
+        self.lbl_ip.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.lbl_ip.setToolTip("IP управляемого ПК (из ⚙ Настроек)")
+        self.lbl_ip.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        root.addWidget(self.lbl_ip)
 
         # ── Блок «ПК» ── проверка состояния сверху, затем действия
         block_pc, pc, pc_title = self._block("ПК")
@@ -272,7 +281,7 @@ class MainWindow(QMainWindow):
 
         root.addStretch(1)
 
-        # 6. Нижняя строка: статус слева, IP управляемого ПК (из настроек) справа
+        # 6. Нижняя строка: статус слева (IP — под заголовком)
         bottom = QHBoxLayout()
         bottom.setContentsMargins(0, 0, 0, 0)
         bottom.setSpacing(12)
@@ -281,12 +290,6 @@ class MainWindow(QMainWindow):
         self.status.setWordWrap(True)
         self.status.setTextInteractionFlags(Qt.TextSelectableByMouse)
         bottom.addWidget(self.status, 1)
-        self.lbl_ip = QLabel(self._ip_text())
-        self.lbl_ip.setObjectName("ip")
-        self.lbl_ip.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.lbl_ip.setToolTip("IP управляемого ПК (из ⚙ Настроек)")
-        self.lbl_ip.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        bottom.addWidget(self.lbl_ip)
         root.addLayout(bottom)
 
         # Автопроверка: каждые N секунд (N — из настроек)

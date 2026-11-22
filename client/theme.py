@@ -4,7 +4,12 @@ from __future__ import annotations
 from PySide6.QtGui import QPalette, QColor
 
 QSS = """
-QWidget { background-color: #1e1e20; color: #e6e6e6; font-size: 13px; }
+/* Фон — только у главного окна; подписи и строка статуса прозрачны,
+   чтобы не появлялись тёмные «поля» под статусами и справа от заголовка. */
+QWidget { color: #e6e6e6; font-size: 13px; }
+QMainWindow, QWidget#central { background-color: #1e1e20; }
+QLabel { background-color: transparent; }
+QWidget#card { background-color: transparent; }
 
 QLabel#title { font-size: 17px; font-weight: 700; color: #f2f2f4; }
 QLabel#rowname { color: #cfcfd4; font-weight: 600; }
