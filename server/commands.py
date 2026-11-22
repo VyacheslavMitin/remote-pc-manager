@@ -18,6 +18,12 @@
     set_lm_port     тело {"command": "set_lm_port", "port": 1234}
                     -> {"ok": true, "command": "set_lm_port", "lmstudio_api_port": 1234}
                        (задаёт lmstudio.api_port и сохраняет его в config.json)
+    vram_debug      -> {"ok": true, "command": "vram_debug",
+                        "compute_apps": {rc, stdout, stderr},
+                        "gpu": {rc, stdout, stderr},
+                        "rows": [{name, mem_mb, match}, ...]}
+                       (отладка VRAM: сырые выходы nvidia-smi; на старом
+                       сервере команды нет — "неизвестная команда")
 """
 from __future__ import annotations
 
@@ -32,7 +38,7 @@ import lmstudio
 import system
 from config import Config, save as save_config
 
-SUPPORTED = ("status", "hibernate", "start_lmstudio", "stop_lmstudio", "set_lm_port")
+SUPPORTED = ("status", "hibernate", "start_lmstudio", "stop_lmstudio", "set_lm_port", "vram_debug")
 
 
 def _os_name() -> str:
@@ -116,6 +122,14 @@ def run(command: str, cfg: Config, args: dict | None = None) -> dict:
     if c == "stop_lmstudio":
         info = lmstudio.stop(cfg.lm_process)
         return {"ok": True, "command": "stop_lmstudio", **info}
+
+    if c == "vram_debug":
+        # Отладка: сырые выходы nvidia-smi + разбор строк по names.
+        return {
+            "ok": True,
+            "command": "vram_debug",
+            **system.vram_debug([cfg.lm_process, "llama-server"]),
+        }
 
     if c == "set_lm_port":
         raw = (args or {}).get("port")

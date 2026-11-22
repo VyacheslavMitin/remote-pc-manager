@@ -118,6 +118,52 @@ def _base_name(process_name: str) -> str:
     return p
 
 
+def vram_debug(needles: str | list[str] | None = None) -> dict:
+    """Отладка VRAM (команда ``vram_debug``): сырые выходы nvidia-smi.
+
+    ``compute_apps`` — `--query-compute-apps` (PID, имя, MiB) по процессам
+    на GPU; ``gpu`` — `--query-gpu=name,memory_total,memory_used` (вся
+    занятая память GPU, для sanity-чека: если там ~16 ГБ, а в
+    compute_apps пусто/имя не совпало — видна причина). ``rows`` —
+    разобранные строки compute_apps с флагом ``match`` (совпало ли имя
+    с одним из needles).
+    """
+    def _run(argv: list[str]) -> dict:
+        try:
+            p = subprocess.run(argv, capture_output=True, text=True, timeout=10)
+            return {"rc": p.returncode, "stdout": p.stdout, "stderr": p.stderr}
+        except Exception as e:  # FileNotFoundError и пр.
+            return {"error": str(e)}
+
+    names = ([needles] if isinstance(needles, str) else list(needles or []))
+    info = {
+        "system": _system(),
+        "compute_apps": _run([
+            "nvidia-smi",
+            "--query-compute-apps=pid,process_name,used_memory",
+            "--format=csv,noheader,nounits",
+        ]),
+        "gpu": _run([
+            "nvidia-smi",
+            "--query-gpu=name,memory_total,memory_used",
+            "--format=csv,noheader,nounits",
+        ]),
+    }
+    if names:
+        nds = [n.lower() for n in names if n]
+        rows = []
+        for line in (info["compute_apps"].get("stdout") or "").splitlines():
+            parts = [p.strip() for p in line.split(",")]
+            if len(parts) >= 3:
+                rows.append({
+                    "name": parts[1],
+                    "mem_mb": parts[2],
+                    "match": any(nd in parts[1].lower() for nd in nds),
+                })
+        info["rows"] = rows
+    return info
+
+
 def process_vram_mb(process_names: str | list[str]) -> int | None:
     """VRAM, занятый процессами, в МБ (MiB) — через nvidia-smi.
 
