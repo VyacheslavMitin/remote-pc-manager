@@ -249,7 +249,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if token and secrets.compare_digest(token, TOKEN):
             self.send_response(302)
             self.send_header("Location", "/web/index.html")
-            self.send_header("Set-Cookie", f"{COOKIE}={TOKEN}; Path=/; HttpOnly; SameSite=Lax")
+            self.send_header("Set-Cookie", f"{COOKIE}={TOKEN}; Path=/; HttpOnly; SameSite=Lax; Max-Age=315360000")
             self.send_header("Content-Length", "0")
             self.end_headers()
         else:
