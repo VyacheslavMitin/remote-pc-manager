@@ -1,14 +1,10 @@
-"""Системная информация: RAM и VRAM процессов LM Studio (app + движок
-llama-server).
+"""Системная информация: RAM и занятая память GPU (VRAM) под LM Studio.
 
 Windows (боевая):
     RAM  -> GlobalMemoryStatusEx() (kernel32, stdlib ctypes) — общая и
            свободная физическая память, без PowerShell.
-    VRAM -> `nvidia-smi --query-compute-apps=pid,process_name,used_memory`
-           — VRAM по процессам (NVIDIA); суммируем все строки, где имя
-           процесса содержит одно из базовых имён (напр. «LM Studio»,
-           «llama-server») — у LM Studio VRAM сидит в движке
-           (llama-server), а не обязательно в самом приложении.
+    VRAM -> `nvidia-smi --query-gpu=memory.used` — общая занятая память
+           GPU (NVIDIA) в MiB; при нескольких GPU — сумма по всем.
 
 macOS/Linux (разработка/тесты):
     RAM  -> /proc/meminfo (Linux) или sysctl hw.memsize + vm_stat (macOS).
@@ -110,14 +106,6 @@ def memory_info() -> dict | None:
     }
 
 
-def _base_name(process_name: str) -> str:
-    """«LM Studio.exe» -> «LM Studio» (без расширения)."""
-    p = (process_name or "").strip()
-    if p.lower().endswith(".exe"):
-        return p[:-4]
-    return p
-
-
 def vram_debug(needles: str | list[str] | None = None) -> dict:
     """Отладка VRAM (команда ``vram_debug``): сырые выходы nvidia-smi.
 
@@ -164,29 +152,21 @@ def vram_debug(needles: str | list[str] | None = None) -> dict:
     return info
 
 
-def process_vram_mb(process_names: str | list[str]) -> int | None:
-    """VRAM, занятый процессами, в МБ (MiB) — через nvidia-smi.
+def gpu_vram_used_mb() -> int | None:
+    """Общая занятая память GPU (VRAM), в МБ (MiB) — через nvidia-smi.
 
-    Запрос ``nvidia-smi --query-compute-apps=pid,process_name,used_memory
-    --format=csv,noheader,nounits`` выдаёт по одному ряду на приложение,
-    использующее GPU: PID, имя процесса, VRAM в MiB. Суммируем used_memory
-    по всем рядам, где имя содержит одно из базовых имён (регистр не
-    важен) — у LM Studio VRAM занят процессами приложения и его
-    inference-движка (llama-server).
+    Запрос ``nvidia-smi --query-gpu=memory.used
+    --format=csv,noheader,nounits`` выдаёт по строке на GPU — занятая
+    память каждого в MiB; суммируем (напр. при нескольких видеокартах).
 
     Возврат:
-        ``int`` — суммарно МБ (``0``, если процессы на GPU не сидят);
+        ``int`` — суммарно МБ (``0``, если GPU свободен);
         ``None`` — nvidia-smi недоступен/не запустился (нет NVIDIA,
-        драйверов или не Windows) либо имена не переданы — клиент просто
-        не покажет VRAM.
+        драйверов или не Windows) — клиент просто не покажет VRAM.
 
     Результат кэшируется на _VRAM_TTL_S секунд (см. модуль).
     """
     global _vram_cache
-    names = [process_names] if isinstance(process_names, str) else list(process_names or [])
-    needles = [n for n in (_base_name(nm).lower() for nm in names) if n]
-    if not needles:
-        return None
     if _vram_cache is not None and time.monotonic() - _vram_cache[0] < _VRAM_TTL_S:
         return _vram_cache[1]
     if _system() != "Windows":
@@ -195,7 +175,7 @@ def process_vram_mb(process_names: str | list[str]) -> int | None:
         out = subprocess.run(
             [
                 "nvidia-smi",
-                "--query-compute-apps=pid,process_name,used_memory",
+                "--query-gpu=memory.used",
                 "--format=csv,noheader,nounits",
             ],
             capture_output=True, text=True, timeout=10,
@@ -204,21 +184,10 @@ def process_vram_mb(process_names: str | list[str]) -> int | None:
         return None  # nvidia-smi нет/не запустился — не кэшируем
     if out.returncode != 0:
         return None
-    if not (out.stdout or "").strip():
-        value = 0  # GPU работает, но вычислительных приложений нет
-        _vram_cache = (time.monotonic(), value)
-        return value
     total = 0
-    for line in out.stdout.splitlines():
-        parts = [p.strip() for p in line.split(",")]
-        if len(parts) < 3:
-            continue
-        pname, mem = parts[1], parts[2]
-        pl = pname.lower()
-        if not any(nd in pl for nd in needles):
-            continue
+    for line in (out.stdout or "").splitlines():
         try:
-            total += int(mem)
+            total += int(line.strip())
         except ValueError:
             pass
     _vram_cache = (time.monotonic(), total)

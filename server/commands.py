@@ -5,7 +5,7 @@
                       "lmstudio_version": "<версия из VersionInfo exe, или null>",
                       "lmstudio_model": "<id загруженной модели (API, /v1/models), или null>",
                       "lmstudio_context": "<контекст модели (токены, API /api/v0/models), или null>",
-                      "lmstudio_vram_mb": "<VRAM процессов LM Studio (app + llama-server, nvidia-smi), МБ; null — нет NVIDIA/не запущена>",
+                      "lmstudio_vram_mb": "<занятая память GPU (VRAM, nvidia-smi), МБ; null — нет NVIDIA / LM Studio не запущена>",
                       "ram_used_mb": "<занято RAM, МБ; null — не удалось прочитать>",
                       "ram_total_mb": "<всего RAM, МБ; null — не удалось прочитать>",
                       "pc_name": "<имя ПК (hostname)>",
@@ -97,12 +97,9 @@ def run(command: str, cfg: Config, args: dict | None = None) -> dict:
             "lmstudio_version": lmstudio.version(cfg.lm_exe),
             "lmstudio_model": lmstudio.loaded_model(cfg.lm_api_port),
             "lmstudio_context": lmstudio.loaded_context(cfg.lm_api_port),
-            # VRAM процессов LM Studio — только когда она запущена (иначе
-            # nvidia-smi не покажет их и «0» в заголовке обманет).
-            # llama-server — inference-движок LM Studio: VRAM занят
-            # именно в нём, а не обязательно в самом приложении.
-            "lmstudio_vram_mb": (system.process_vram_mb([cfg.lm_process, "llama-server"])
-                                if running else None),
+            # Занятая память GPU (VRAM) — только когда LM Studio запущена
+            # (иначе простой GPU покажет «0» в заголовке и обманет).
+            "lmstudio_vram_mb": (system.gpu_vram_used_mb() if running else None),
             "ram_used_mb": mem.get("used_mb"),
             "ram_total_mb": mem.get("total_mb"),
             "pc_name": socket.gethostname(),
