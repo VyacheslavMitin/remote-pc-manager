@@ -530,7 +530,8 @@ function applyStatus(res) {
     setDot($("dotLM"), running, running ? "запущена" : "не запущена");
     last.lm = running;
   }
-  last.modelLoaded = !!(res.lmstudio_model && String(res.lmstudio_model).trim());
+  // «модель загружена» = известен контекст (state==«loaded»); /v1/models отдаёт каталог даже без загрузки
+  last.modelLoaded = (res.lmstudio_context || 0) > 0;
   $("stateLM").textContent = lmText(last.lm);
   setLmTitle(res.lmstudio_version, res.lmstudio_model, res.lmstudio_context, res.lmstudio_vram_mb);
   setPcTitle(res.pc_name, res.os_name, res.uptime_s, res.ram_used_mb, res.ram_total_mb);
