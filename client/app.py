@@ -142,30 +142,42 @@ def _format_ram(used_mb: int | str | None, total_mb: int | str | None) -> str:
 
 
 class StatusRow(QWidget):
-    """Строка: [название] [●] … [кнопка «Проверить»]."""
+    """Строка: [●] [состояние] … [кнопка «Проверить»].
 
-    def __init__(self, name: str, on_check, parent=None):
+    Индикатор — у левого края, рядом живой статус:
+    ПК — «в сети»/«не в сети», LM Studio — «работает»/«остановлен».
+    """
+
+    _PC = {True: "в сети", False: "не в сети", None: "—"}
+    _LM = {True: "работает", False: "остановлен", None: "—"}
+
+    def __init__(self, kind: str, on_check, parent=None):
         super().__init__(parent)
         self.setObjectName("card")
+        self._kind = kind
         h = QHBoxLayout(self)
         h.setContentsMargins(12, 8, 12, 8)
         h.setSpacing(10)
-
-        name_lbl = QLabel(name)
-        name_lbl.setObjectName("rowname")
-        name_lbl.setMinimumWidth(96)
 
         self.dot = QLabel("⚪")
         self.dot.setObjectName("dot")
         self.dot.setToolTip("не проверено")
 
+        self.state = QLabel("—")
+        self.state.setObjectName("rowname")
+        self.state.setMinimumWidth(96)
+
         self.btn = QPushButton("Проверить")
         self.btn.clicked.connect(lambda: on_check(self))
 
-        h.addWidget(name_lbl)
         h.addWidget(self.dot)
+        h.addWidget(self.state)
         h.addStretch(1)
         h.addWidget(self.btn)
+
+    def _state_text(self, ok: bool | None) -> str:
+        table = self._PC if self._kind == "pc" else self._LM
+        return table.get(ok, "—")
 
     def set_state(self, ok: bool | None, tooltip: str = "") -> None:
         if ok is None:
@@ -174,11 +186,13 @@ class StatusRow(QWidget):
             self.dot.setText("🟢" if ok else "🔴")
         if tooltip:
             self.dot.setToolTip(tooltip)
+        self.state.setText(self._state_text(ok))
 
     def set_checking(self) -> None:
         """Состояние «проверка идёт» — жёлтый индикатор."""
         self.dot.setText("🟡")
         self.dot.setToolTip("проверка…")
+        self.state.setText("проверка…")
 
 
 class MainWindow(QMainWindow):
@@ -224,7 +238,7 @@ class MainWindow(QMainWindow):
         # ── Блок «ПК» ── проверка состояния сверху, затем действия
         block_pc, pc, pc_title = self._block("ПК")
         self.title_pc = pc_title
-        self.row_pc = StatusRow("Состояние", self.on_check_pc)
+        self.row_pc = StatusRow("pc", self.on_check_pc)
         pc.addWidget(self.row_pc)
         power = QHBoxLayout()
         power.setSpacing(10)
@@ -241,7 +255,7 @@ class MainWindow(QMainWindow):
 
         # ── Блок «LM Studio» ── проверка состояния сверху, затем действия
         block_lm, lmb, self.title_lm = self._block("LM Studio")
-        self.row_lm = StatusRow("Состояние", self.on_check_lm)
+        self.row_lm = StatusRow("lm", self.on_check_lm)
         lmb.addWidget(self.row_lm)
         lm = QHBoxLayout()
         lm.setSpacing(10)
