@@ -1,14 +1,15 @@
-"""Системная информация: RAM и занятая память GPU (VRAM) под LM Studio.
+r"""Системная информация: RAM и занятая память GPU (VRAM) под LM Studio.
 
 Windows (боевая):
     RAM  -> GlobalMemoryStatusEx() (kernel32, stdlib ctypes) — общая и
            свободная физическая память, без PowerShell.
-    VRAM -> `nvidia-smi --query-gpu=memory.used` — общая занятая память
-           GPU (NVIDIA) в MiB; при нескольких GPU — сумма по всем.
+    VRAM -> PowerShell `Get-Counter '\GPU Process Memory(*)\Dedicated Usage'`
+           — самый крупный процесс на GPU (загруженная модель), байты → МБ.
+           nvidia-smi на целевом ПК процессы по памяти не отдаёт.
 
 macOS/Linux (разработка/тесты):
     RAM  -> /proc/meminfo (Linux) или sysctl hw.memsize + vm_stat (macOS).
-    VRAM -> None (nvidia-smi неприменим; в тестах monkeypatch'им _system).
+    VRAM -> None (Get-Counter неприменим; в тестах monkeypatch'им _system).
 """
 from __future__ import annotations
 
@@ -152,17 +153,20 @@ def vram_debug(needles: str | list[str] | None = None) -> dict:
     return info
 
 
-def gpu_vram_used_mb() -> int | None:
-    """Общая занятая память GPU (VRAM), в МБ (MiB) — через nvidia-smi.
+def gpu_process_vram_mb() -> int | None:
+    """VRAM самого большого процесса на GPU (загруженная модель), в МБ.
 
-    Запрос ``nvidia-smi --query-gpu=memory.used
-    --format=csv,noheader,nounits`` выдаёт по строке на GPU — занятая
-    память каждого в MiB; суммируем (напр. при нескольких видеокартах).
+    PowerShell ``Get-Counter '\\GPU Process Memory(*)\\Dedicated Usage'
+    -MaxSamples 1 -SampleInterval 1`` выдаёт занятую выделенную память
+    каждого процесса GPU (CookedValue, байты); берём **максимум** —
+    при запущенной LM Studio с загруженной моделью это и есть модель.
+    Байты переводим в МБ.
 
     Возврат:
-        ``int`` — суммарно МБ (``0``, если GPU свободен);
-        ``None`` — nvidia-smi недоступен/не запустился (нет NVIDIA,
-        драйверов или не Windows) — клиент просто не покажет VRAM.
+        ``int`` — МБ самого крупного процесса (``0``, если процессов
+        на GPU нет);
+        ``None`` — PowerShell/Get-Counter недоступны (не Windows) —
+        клиент просто не покажет VRAM.
 
     Результат кэшируется на _VRAM_TTL_S секунд (см. модуль).
     """
@@ -171,24 +175,33 @@ def gpu_vram_used_mb() -> int | None:
         return _vram_cache[1]
     if _system() != "Windows":
         return None  # dev/тесты на macOS/Linux
+    ps = (
+        "Get-Counter '\\GPU Process Memory(*)\\Dedicated Usage' "
+        "-MaxSamples 1 -SampleInterval 1 -ErrorAction SilentlyContinue | "
+        "ForEach-Object { $_.CounterSamples } | "
+        "Sort-Object CookedValue -Descending | "
+        "Select-Object -First 1 -ExpandProperty CookedValue"
+    )
     try:
         out = subprocess.run(
-            [
-                "nvidia-smi",
-                "--query-gpu=memory.used",
-                "--format=csv,noheader,nounits",
-            ],
-            capture_output=True, text=True, timeout=10,
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
+            capture_output=True, text=True, timeout=15,
         )
     except Exception:
-        return None  # nvidia-smi нет/не запустился — не кэшируем
+        return None  # PowerShell нет/не запустился — не кэшируем
     if out.returncode != 0:
         return None
-    total = 0
     for line in (out.stdout or "").splitlines():
+        value = line.strip()
+        if not value:
+            continue
         try:
-            total += int(line.strip())
+            largest_mb = int(float(value)) // (1024 * 1024)
         except ValueError:
-            pass
-    _vram_cache = (time.monotonic(), total)
-    return total
+            continue
+        _vram_cache = (time.monotonic(), largest_mb)
+        return largest_mb
+    # PowerShell запустился, но процессов на GPU нет (или счётчика нет)
+    value = 0
+    _vram_cache = (time.monotonic(), value)
+    return value
