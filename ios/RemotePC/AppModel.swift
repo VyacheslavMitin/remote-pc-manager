@@ -101,7 +101,8 @@ final class AppModel: ObservableObject {
         // LM-проверка не меняет точку ПК (как в десктопе) — только заголовки + состояние LM.
         lmState = (res["lmstudio_running"] as? Bool) ?? false
         let loadedModel = (res["lmstudio_model"] as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
-        lmModelLoaded = (lmState == true) && !loadedModel.isEmpty
+        // «модель загружена» = известен контекст (state==«loaded»); /v1/models отдаёт каталог даже без загрузки
+        lmModelLoaded = (lmState == true) && ((res["lmstudio_context"] as? Int) ?? 0) > 0
 
         // ПК
         let name = (res["pc_name"] as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
