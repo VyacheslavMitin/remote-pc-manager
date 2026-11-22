@@ -15,9 +15,15 @@ class ServerError(Exception):
     """Ошибка общения с сервером (нет связи, таймаут, ошибка сервера)."""
 
 
-def request(host: str, port: int, command: str, timeout: float = 5.0,
+def request(host: str, port: int, command: str, timeout: float = 8.0,
             args: dict | None = None) -> dict:
     """Выполняет команду на сервере и возвращает распарсенный JSON (ok=true).
+
+    timeout по умолчанию 8 с: серверу на status (ping, версия, модель,
+    контекст, VRAM) нужен запас под худший случай, когда LM Studio
+    закрывается (API принимает соединения и молчит) — суммарно ~4.5 с
+    (README, «Бюджет времени status»). Таймаут клиента должен быть
+    БОЛЬШЕ этого бюджета, иначе клиент сбрасывает оба заголовка.
 
     args — дополнительные поля запроса (например {"port": 1234} для
     set_lm_port); идут в тело POST рядом с "command"."""
@@ -61,6 +67,6 @@ def request(host: str, port: int, command: str, timeout: float = 5.0,
     return obj
 
 
-def status(host: str, port: int, timeout: float = 5.0) -> dict:
+def status(host: str, port: int, timeout: float = 8.0) -> dict:
     """Удобная обёртка: команда «status» (подтверждает и сервер, и LM Studio)."""
     return request(host, port, "status", timeout=timeout)

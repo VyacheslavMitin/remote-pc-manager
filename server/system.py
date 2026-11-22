@@ -185,7 +185,7 @@ def gpu_process_vram_mb() -> int | None:
     try:
         out = subprocess.run(
             ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
-            capture_output=True, text=True, timeout=15,
+            capture_output=True, text=True, timeout=5,
         )
     except Exception:
         return None  # PowerShell нет/не запустился — не кэшируем

@@ -34,6 +34,15 @@ import urllib.request
 # Сколько секунд давать приложению на аккуратное завершение.
 GRACEFUL_TIMEOUT_S = 8.0
 
+# Таймаут запросов к локальному API LM Studio в контексте status.
+# ВАЖНО: суммарное время команды status должно укладываться в таймаут
+# клиента (8 с, client/server_api.py) — иначе клиент сбрасывает оба
+# заголовка (ПК и LM) до голых, хотя сервер жив. Закрытая LM Studio
+# отвечает мгновенно (connection refused), но закрывающаяся (разгрузка
+# модели) может принимать соединения и молчать: на каждый такой запрос
+# даём 1 с.
+API_TIMEOUT_S = 1.0
+
 # Кэш версии LM Studio: (версия, mtime exe). Версия меняется только при
 # обновлении приложения (сменится mtime файла) — тогда перепроверяем.
 # Без кэша каждый status-запрос запускал бы powershell (~1 с) — а клиент
@@ -77,7 +86,7 @@ def is_running(process_name: str) -> bool:
                 ["tasklist", "/FI", f"IMAGENAME eq {name}"],
                 capture_output=True,
                 text=True,
-                timeout=15,
+                timeout=5,
             ).stdout
             return name.lower() in out.lower()
         except Exception:
@@ -145,7 +154,7 @@ def version(exe: str = "") -> str | None:
     try:
         out = subprocess.run(
             ["powershell", "-NoProfile", "-Command", script],
-            capture_output=True, text=True, timeout=20,
+            capture_output=True, text=True, timeout=5,
         ).stdout.strip()
     except Exception:
         _version_fail_at = time.monotonic()
@@ -181,7 +190,7 @@ def loaded_model(port: int = 1234) -> str | None:
         return None
     url = f"http://127.0.0.1:{port}/v1/models"
     try:
-        with urllib.request.urlopen(url, timeout=3) as resp:
+        with urllib.request.urlopen(url, timeout=API_TIMEOUT_S) as resp:
             body = json.loads(resp.read().decode("utf-8", "replace"))
     except Exception:
         return None
@@ -223,14 +232,14 @@ def loaded_context(port: int = 1234) -> int | None:
         port = int(port)
     except (TypeError, ValueError):
         return None
-    data = _get_json(f"http://127.0.0.1:{port}/api/v0/models")
+    data = _get_json(f"http://127.0.0.1:{port}/api/v0/models", timeout=API_TIMEOUT_S)
     for m in ((data or {}).get("data") or []):
         if m.get("state") and (m.get("state") or "").lower() != "loaded":
             continue
         v = m.get("loaded_context_length")
         if isinstance(v, int) and v > 0:
             return v
-    data = _get_json(f"http://127.0.0.1:{port}/api/v1/models")
+    data = _get_json(f"http://127.0.0.1:{port}/api/v1/models", timeout=API_TIMEOUT_S)
     for m in ((data or {}).get("models") or []):
         for inst in (m.get("loaded_instances") or []):
             v = (inst.get("config") or {}).get("context_length")

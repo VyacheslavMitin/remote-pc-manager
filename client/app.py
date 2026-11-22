@@ -319,7 +319,7 @@ class MainWindow(QMainWindow):
         QThread «на лету» (иначе Qt роняет процесс при выходе)."""
         for w in list(self._workers):
             if w.isRunning():
-                w.wait(6000)  # сеть максимум ~5с (timeout) + ping ~3.5с
+                w.wait(10000)  # сеть максимум ~8с (timeout) + запас на ping
         super().closeEvent(event)
 
     def _drop(self, w) -> None:
