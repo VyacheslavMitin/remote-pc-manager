@@ -60,6 +60,7 @@ struct ContentView: View {
             StatusRow(
                 dot: Theme.dot(model.pcState),
                 text: model.pcState == nil ? "—" : (model.pcState == true ? "в сети" : "не отвечает"),
+                checking: model.checking,
                 buttonTitle: model.checking ? "Проверка…" : "Проверить",
                 disabled: model.busy,
                 action: { Task { await model.manualCheckPC() } }
@@ -95,6 +96,7 @@ struct ContentView: View {
             StatusRow(
                 dot: Theme.dot(model.lmState),
                 text: model.lmState == nil ? "—" : (model.lmState == true ? "работает" : "не запущена"),
+                checking: model.checking,
                 buttonTitle: model.checking ? "Проверка…" : "Проверить",
                 disabled: model.busy,
                 action: { Task { await model.manualCheckLM() } }
@@ -143,17 +145,22 @@ struct ContentView: View {
 // MARK: - переиспользуемые элементы
 
 /// Строка «точка · текст · [Проверить]» (как .statusrow в app.py).
+/// Во время проверки — жёлтая точка «проверка…» (как в десктопе/вебе).
 struct StatusRow: View {
     let dot: String
     let text: String
+    var checking: Bool = false
     let buttonTitle: String
     var disabled: Bool = false
     let action: () -> Void
 
+    private var shownDot: String { checking ? "🟡" : dot }
+    private var shownText: String { checking ? "проверка…" : text }
+
     var body: some View {
         HStack(spacing: 8) {
-            Text(dot).font(.system(size: 15))
-            Text(text)
+            Text(shownDot).font(.system(size: 15))
+            Text(shownText)
                 .font(.system(size: 13))
                 .foregroundColor(Theme.muted)
             Spacer()

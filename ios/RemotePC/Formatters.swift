@@ -15,14 +15,15 @@ enum Format {
         return parts.joined(separator: " ")
     }
 
-    /// "128k" / "1.5M" (контекст модели в токенах)
+    /// «64K» / «128K» (контекст модели в токенах): 65536 -> «64K»,
+    /// 131072 -> «128K»; не кратное 1024 — как есть (100000 -> «100000»).
+    /// Как в _format_context (app.py) и formatContext (web).
     static func context(_ n: Int?) -> String {
         guard let n, n > 0 else { return "" }
-        if n >= 1_000_000 {
-            let v = Double(n) / 1_000_000
-            return v == v.rounded() ? String(format: "%.0fM", v) : String(format: "%.1fM", v)
+        if n % 1024 == 0 {
+            return "\(n / 1024)K"
         }
-        return "\(n / 1000)k"
+        return "\(n)"
     }
 
     /// "12.3 ГБ" (МБ → ГБ)
