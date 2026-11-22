@@ -325,7 +325,7 @@ input::selection { background: var(--accent); color: #fff; }
    а мак отправляет UDP magic packet (та же логика, что в client/wol.py).
    ═════════════════════════════════════════════════════════════════════ */
 
-const DEFAULT_PC_OS = "Windows 11";
+const DEFAULT_PC_OS = "Win 11";
 
 /* ── конфиг (по умолчанию — как config.example.json) ─────────────────── */
 let cfg = {
@@ -376,14 +376,11 @@ function formatGb(mb) {
 }
 
 function formatRam(usedMb, totalMb) {
-  const n = x => {
-    const v = parseInt(x, 10);
-    return Number.isFinite(v) && v >= 0 ? v : null;
-  };
-  const u = n(usedMb), t = n(totalMb);
-  if (u !== null && t !== null) return `RAM ${(u / 1024).toFixed(1)}/${(t / 1024).toFixed(1)} ГБ`;
-  if (u !== null) return `RAM ${(u / 1024).toFixed(1)} ГБ`;
-  return "";
+  // «37 ГБ» — только занятое (totalMb из сервера в заголовок не попадает)
+  const v = parseInt(usedMb, 10);
+  if (!Number.isFinite(v) || v < 0) return "";
+  const gb = v / 1024;
+  return gb < 1 ? `${gb.toFixed(1)} ГБ` : `${Math.round(gb)} ГБ`;
 }
 
 /* ── индикаторы ───────────────────────────────────────────────────────── */
@@ -401,7 +398,9 @@ function setPcTitle(name, osName, uptimeS, ramUsedMb, ramTotalMb) {
   name = (name || "").trim();
   if (!name) { $("titlePC").textContent = "ПК"; return; }
   const parts = [name];
-  parts.push((osName || "").trim() || DEFAULT_PC_OS);
+  let osText = (osName || "").trim() || DEFAULT_PC_OS;
+  if (osText.toLowerCase().startsWith("windows")) osText = `Win ${osText.slice(7).trim()}`;
+  parts.push(osText);
   if (uptimeS !== null && uptimeS !== undefined) parts.push(formatUptime(uptimeS));
   const ram = formatRam(ramUsedMb, ramTotalMb);
   if (ram) parts.push(ram);

@@ -9,11 +9,11 @@
 Раскладка: главное окно разделено на два блока — «ПК» и «LM Studio»;
 в каждом блоке строка проверки состояния (индикатор + «Проверить»)
 сверху, под ней — кнопки действий.
-Заголовок блока «ПК» — «ПК (имя, ОС, аптайм, RAM 18.4/31.9 ГБ)», если
-сервер ответил (pc_name, os_name, uptime_s, ram_used_mb/ram_total_mb
+Заголовок блока «ПК» — «ПК (имя, ОС, аптайм, 37 ГБ)», если
+сервер ответил (pc_name, os_name, uptime_s, ram_used_mb
 из status; аптайм форматируется без секунд, ОС — из ответа сервера, либо
-константа Windows 11, если сервер не прислал её, RAM — занято/всего в
-гигабайтах), иначе просто «ПК» (сервер недоступен).
+константа Win 11, если сервер не прислал её, RAM — только занятое
+в гигабайтах), иначе просто «ПК» (сервер недоступен).
 Шестерёнка настроек — в верхнем правом углу (только значок);
 внизу слева — строка состояния автопроверки (вкл/выкл + время следующей
 проверки), внизу справа — «IP: <адрес управляемого ПК>» (из настроек).
@@ -54,8 +54,8 @@ from PySide6.QtWidgets import (
 
 # Запасное имя ОС сервера (целевой Windows-ПК) — на случай, если сервер
 # не прислал os_name в status (старая версия сервера). Если сервер прислал —
-# его значение в приоритете.
-DEFAULT_PC_OS = "Windows 11"
+# его значение в приоритете. В заголовке «Windows 11» сокращается до «Win 11».
+DEFAULT_PC_OS = "Win 11"
 
 
 def _format_uptime(total: int) -> str:
@@ -108,26 +108,21 @@ def _format_gb(mb: int | str | None) -> str:
 
 
 def _format_ram(used_mb: int | str | None, total_mb: int | str | None) -> str:
-    """RAM для заголовка: «RAM 18.4/31.9 ГБ» (занято/всего).
+    """RAM для заголовка: «37 ГБ» (только занято).
 
-    Если известно только «занято» — «RAM 18.4 ГБ»; известно только
-    «всего» или ничего — '' (часть заголовка не показывать).
+    `total_mb` сервер присылает, но в заголовок не попадает (осталось в API).
+    Значение неизвестно или не число — '' (часть заголовка не показывать).
     """
-    def _n(x: int | str | None) -> int | None:
-        if x is None or x == "":
-            return None
-        try:
-            v = int(x)
-        except (TypeError, ValueError):
-            return None
-        return v if v >= 0 else None
-
-    u, t = _n(used_mb), _n(total_mb)
-    if u is not None and t is not None:
-        return f"RAM {u / 1024:.1f}/{t / 1024:.1f} ГБ"
-    if u is not None:
-        return f"RAM {u / 1024:.1f} ГБ"
-    return ""
+    if used_mb is None or used_mb == "":
+        return ""
+    try:
+        u = int(used_mb)
+    except (TypeError, ValueError):
+        return ""
+    if u < 0:
+        return ""
+    gb = u / 1024
+    return f"{gb:.1f} ГБ" if gb < 1 else f"{round(gb)} ГБ"
 
 
 class StatusRow(QWidget):
@@ -332,19 +327,22 @@ class MainWindow(QMainWindow):
         ram_used_mb: int | None = None,
         ram_total_mb: int | None = None,
     ) -> None:
-        """Заголовок блока «ПК»: «ПК (имя, ОС, аптайм, RAM 18.4/31.9 ГБ)»,
+        """Заголовок блока «ПК»: «ПК (имя, ОС, аптайм, 37 ГБ)»,
         если сервер ответил (pc_name + os_name + uptime_s +
-        ram_used_mb/ram_total_mb из status). ОС — из ответа сервера, либо
-        при старой версии сервера — константа DEFAULT_PC_OS. Аптайм
-        форматируется без секунд (uptime_s — секунды). RAM — занято/всего
-        в ГБ; если сервер не прислал (старая версия) — части заголовка
-        нет. Сервер недоступен или имя пустое — просто «ПК»."""
+        ram_used_mb из status). ОС — из ответа сервера, либо при старой
+        версии сервера — константа DEFAULT_PC_OS; в заголовке «Windows 11»
+        сокращается до «Win 11». Аптайм форматируется без секунд
+        (uptime_s — секунды). RAM — только занятое в ГБ; если сервер не
+        прислал (старая версия) — части заголовка нет. Сервер недоступен
+        или имя пустое — просто «ПК»."""
         name = (name or "").strip()
         if not name:
             self.title_pc.setText("ПК")
             return
         parts = [name]
         os_text = (os_name or "").strip() or DEFAULT_PC_OS
+        if os_text.lower().startswith("windows"):
+            os_text = f"Win {os_text[7:].strip()}"
         parts.append(os_text)
         if uptime_s is not None:
             parts.append(_format_uptime(uptime_s))
