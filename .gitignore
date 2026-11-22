@@ -26,6 +26,11 @@ server/server.pid
 # Собранный .app-бандл (собирается скриптом start/build_app.sh)
 start/Remote-PC-Manager.app/
 
+# iOS (ios/build_ipa.sh)
+ios/build/
+ios/dist/
+ios/*.xcodeproj
+
 # IDE
 .idea/
 .vscode/
