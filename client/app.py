@@ -205,7 +205,6 @@ class MainWindow(QMainWindow):
         ac = self.cfg.get("auto_check", {})
         self._auto_enabled = bool(ac.get("enabled", True))
         self._auto_interval_s = max(1, int(ac.get("interval_s", 10)))
-        self._auto_mode = False          # разрешить авто-строке переписывать статус
         self._manual_inflight = 0        # сколько ручных операций сейчас в полёте
         self._last: dict[str, object] = {"pc": None, "lm": None, "t": None}
 
@@ -234,7 +233,10 @@ class MainWindow(QMainWindow):
         title_row.addWidget(title)
         title_row.addStretch(1)
         title_row.addWidget(self.btn_settings)
-        root.addLayout(title_row)
+        # Шапка: заголовок + IP прямо под ним (плотный отступ, как в iOS)
+        head = QVBoxLayout()
+        head.setSpacing(6)
+        head.addLayout(title_row)
 
         # IP управляемого ПК (из настроек) — строка прямо под заголовком
         self.lbl_ip = QLabel(self._ip_text())
@@ -242,7 +244,8 @@ class MainWindow(QMainWindow):
         self.lbl_ip.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.lbl_ip.setToolTip("IP управляемого ПК (из ⚙ Настроек)")
         self.lbl_ip.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        root.addWidget(self.lbl_ip)
+        head.addWidget(self.lbl_ip)
+        root.addLayout(head)
 
         # ── Блок «ПК» ── проверка состояния сверху, затем действия
         block_pc, pc, pc_title = self._block("ПК")
@@ -281,27 +284,30 @@ class MainWindow(QMainWindow):
 
         root.addStretch(1)
 
-        # 6. Нижняя строка: статус слева (IP — под заголовком)
-        bottom = QHBoxLayout()
+        # 6. Нижняя область: две строки (как в веб/iOS) — сообщение сверху,
+        #    автопроверка снизу (всегда видна, сообщение её не вытесняет)
+        bottom = QVBoxLayout()
         bottom.setContentsMargins(0, 0, 0, 0)
-        bottom.setSpacing(12)
+        bottom.setSpacing(2)
         self.status = QLabel("Готов.")
         self.status.setObjectName("status")
         self.status.setWordWrap(True)
         self.status.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        bottom.addWidget(self.status, 1)
+        bottom.addWidget(self.status)
+        self.auto_label = QLabel("")
+        self.auto_label.setStyleSheet("color: #9a9aa0; font-size: 11px;")
+        bottom.addWidget(self.auto_label)
         root.addLayout(bottom)
 
         # Автопроверка: каждые N секунд (N — из настроек)
         self._timer = QTimer(self)
         self._timer.setInterval(self._auto_interval_ms())
         self._timer.timeout.connect(self._auto_tick)
+        self._refresh_status_line()  # заполнить строку автопроверки (таймер готов)
         if self._auto_enabled:
             self._timer.start()
             # первая проверка сразу, чтобы не ждать N секунд на «⚪»
             self._auto_tick()
-        else:
-            self.status.setText(self._auto_line())
 
     # ---------- инфраструктура ----------
     def _run(self, fn, ok=None, fail=None, on_finish=None) -> Worker:
@@ -344,7 +350,6 @@ class MainWindow(QMainWindow):
             self._workers.remove(w)
 
     def _msg(self, text: str) -> None:
-        self._auto_mode = False  # ручное сообщение не давим авто-строкой
         self.status.setText(text)
 
     def _ip_text(self) -> str:
@@ -450,16 +455,14 @@ class MainWindow(QMainWindow):
 
     def _begin_manual(self) -> None:
         self._manual_inflight += 1
-        self._auto_mode = False
 
     def _finish_manual(self, row: StatusRow | None = None) -> None:
         if row is not None:
             row.btn.setEnabled(True)
         self._manual_inflight = max(0, self._manual_inflight - 1)
-        # автопроверка выключена — верни постоянную строку (она не
-        # обновится сама, тики не идут), сообщение об операции было временным
+        # автопроверка выключена — обнови строку автопроверки (тики не идут)
         if self._manual_inflight == 0 and not self._auto_enabled:
-            self.status.setText(self._auto_line())
+            self.auto_label.setText(self._auto_line())
 
     # ---------- автопроверка ----------
     def _auto_tick(self) -> None:
@@ -469,7 +472,6 @@ class MainWindow(QMainWindow):
         if self._manual_inflight > 0:
             return  # идёт ручная операция — не наступаем на неё
 
-        self._auto_mode = True
         host = self.cfg["pc"]["ip"]
         self.row_pc.set_checking()
         self._run(
@@ -529,11 +531,10 @@ class MainWindow(QMainWindow):
         return "Автопроверка: включена"
 
     def _refresh_status_line(self) -> None:
-        if not self._auto_mode:
-            return
+        """Обновляет строку автопроверки (отдельная строка — сообщение не давит)."""
         line = self._auto_line()
-        if self.status.text() != line:
-            self.status.setText(line)
+        if self.auto_label.text() != line:
+            self.auto_label.setText(line)
 
     # ---------- действия ----------
     def on_wol(self) -> None:
@@ -689,8 +690,7 @@ class MainWindow(QMainWindow):
                 self._auto_tick()  # сразу перепроверить с новыми настройками
             else:
                 self._timer.stop()
-                self._auto_mode = False
-                self.status.setText(self._auto_line())
+                self.auto_label.setText(self._auto_line())
             self._msg("⚙ Настройки сохранены.")
             self._push_lm_port()
 
