@@ -103,14 +103,9 @@ final class AppModel: ObservableObject {
         let os = Format.osName(res["os_name"] as? String)
         let up = Format.uptime(res["uptime_s"] as? Int)
         let ram = Format.gb(res["ram_used_mb"] as? Int)
-        let parts = [os, up, ram].filter { !$0.isEmpty }.joined(separator: ", ")
-        if !name.isEmpty {
-            pcTitle = "ПК (\(name)\(parts.isEmpty ? "" : " — " + parts))"
-        } else if !parts.isEmpty {
-            pcTitle = "ПК (\(parts))"
-        } else {
-            pcTitle = "ПК"
-        }
+        var parts = [os, up, ram].filter { !$0.isEmpty }
+        if !name.isEmpty { parts.insert(name, at: 0) }
+        pcTitle = parts.isEmpty ? "ПК" : "ПК (\(parts.joined(separator: ", ")))"
 
         // LM Studio
         let ver = Format.version(res["lmstudio_version"] as? String)

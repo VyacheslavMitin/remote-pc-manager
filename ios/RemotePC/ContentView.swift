@@ -200,7 +200,10 @@ struct ActionButton: View {
             .background(
                 RoundedRectangle(cornerRadius: 8)
                     .fill(disabled ? color.opacity(0.4) : color)
-                    .border(border ?? Color.clear)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(border ?? Color.clear, lineWidth: 1)
             )
         }
         .disabled(disabled)
