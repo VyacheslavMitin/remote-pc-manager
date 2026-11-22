@@ -13,13 +13,13 @@ final class AppModel: ObservableObject {
     @Published var lmTitle = "LM Studio"
     @Published var statusLine = "Готов."
     @Published var autoLine = "Автопроверка: выключена"
-    @Published var checking = false
+    @Published var pcChecking = false
+    @Published var lmChecking = false
     @Published var busy = false
 
     let cfg: ConfigStore
     private var autoTask: Task<Void, Never>?
     private var lastTick: Date?
-    private var checkingCount = 0
 
     init(cfg: ConfigStore) {
         self.cfg = cfg
@@ -38,20 +38,25 @@ final class AppModel: ObservableObject {
             pcState = false
             return
         }
-        beginCheck()
-        defer { endCheck() }
-        pcState = await NetCheck.hostIsUp(host: ip, port: cfg.serverPort)
+        pcChecking = true
+        let start = Date()
+        let up = await NetCheck.hostIsUp(host: ip, port: cfg.serverPort)
+        await minVisible(start: start)
+        pcState = up
+        pcChecking = false
     }
 
     func checkLM() async {
-        beginCheck()
-        defer { endCheck() }
+        lmChecking = true
+        let start = Date()
         do {
             let res = try await api.command("status", timeout: 6)
             applyStatus(res)
         } catch {
             lmState = false
         }
+        await minVisible(start: start)
+        lmChecking = false
     }
 
     /// Автопроверка: ПК + LM одновременно (как _auto_tick в app.py).
@@ -93,7 +98,7 @@ final class AppModel: ObservableObject {
 
     /// Заголовки секций из ответа status (порты _set_pc_title / _set_lm_title).
     private func applyStatus(_ res: [String: Any]) {
-        pcState = true   // сервер ответил — ПК в сети
+        // LM-проверка не меняет точку ПК (как в десктопе) — только заголовки + состояние LM.
         lmState = (res["lmstudio_running"] as? Bool) ?? false
         let loadedModel = (res["lmstudio_model"] as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
         lmModelLoaded = (lmState == true) && !loadedModel.isEmpty
@@ -215,15 +220,14 @@ final class AppModel: ObservableObject {
         autoLine = "Автопроверка: вкл · следующая в \(t)"
     }
 
-    // MARK: - счётчик «Проверка…»
+    // MARK: - минимальная видимая длительность «проверка…»
 
-    private func beginCheck() {
-        checkingCount += 1
-        checking = true
-    }
-
-    private func endCheck() {
-        checkingCount = max(0, checkingCount - 1)
-        checking = checkingCount > 0
+    /// TCP-/HTTP-проверка на LAN может завершиться за миллисекунды — жёлтый индикатор
+    /// не успевает отрисоваться. Держим состояние «проверка…» не короче minDur.
+    private func minVisible(start: Date, minDur: TimeInterval = 0.6) async {
+        let elapsed = Date().timeIntervalSince(start)
+        if elapsed < minDur {
+            try? await Task.sleep(for: .seconds(minDur - elapsed))
+        }
     }
 }

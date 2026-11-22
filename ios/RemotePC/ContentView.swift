@@ -15,6 +15,9 @@ struct ContentView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 14) {
+                    Text("IP: \(model.cfg.pcIP)")
+                        .font(.system(size: 11))
+                        .foregroundColor(Theme.muted)
                     pcSection
                     lmSection
                 }
@@ -22,7 +25,7 @@ struct ContentView: View {
                 .padding(.top, 6)
             }
             .background(Theme.bg.ignoresSafeArea())
-            .navigationTitle("Удалённый ПК")
+            .navigationTitle("Управление удалённым ПК")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -60,8 +63,8 @@ struct ContentView: View {
             StatusRow(
                 dot: Theme.dot(model.pcState),
                 text: model.pcState == nil ? "—" : (model.pcState == true ? "в сети" : "не отвечает"),
-                checking: model.checking,
-                buttonTitle: model.checking ? "Проверка…" : "Проверить",
+                checking: model.pcChecking,
+                buttonTitle: model.pcChecking ? "Проверка…" : "Проверить",
                 disabled: model.busy,
                 action: { Task { await model.manualCheckPC() } }
             )
@@ -96,8 +99,8 @@ struct ContentView: View {
             StatusRow(
                 dot: Theme.dot(model.lmState),
                 text: model.lmState == nil ? "—" : (model.lmState == true ? "работает" : "не запущена"),
-                checking: model.checking,
-                buttonTitle: model.checking ? "Проверка…" : "Проверить",
+                checking: model.lmChecking,
+                buttonTitle: model.lmChecking ? "Проверка…" : "Проверить",
                 disabled: model.busy,
                 action: { Task { await model.manualCheckLM() } }
             )
@@ -128,12 +131,8 @@ struct ContentView: View {
             Text(model.statusLine)
                 .font(.system(size: 12))
                 .lineLimit(2)
-            HStack {
-                Text(model.autoLine)
-                Spacer()
-                Text("IP: \(model.cfg.pcIP)")
-            }
-            .font(.system(size: 11))
+            Text(model.autoLine)
+                .font(.system(size: 11))
         }
         .foregroundColor(Theme.muted)
         .padding(.horizontal, 14)
