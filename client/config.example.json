@@ -9,5 +9,6 @@
   "auto_check": {
     "enabled": true,
     "interval_s": 10
-  }
+  },
+  "web_token": ""
 }
