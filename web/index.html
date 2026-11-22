@@ -83,6 +83,7 @@ body {
   border: 1px solid var(--border);
   border-radius: 10px;
   font-size: 27px;
+  padding: 0;
   color: var(--rowname);
   cursor: pointer;
   transition: background .12s, border-color .12s, color .12s;
@@ -216,6 +217,17 @@ input::selection { background: var(--accent); color: #fff; }
   font-size: 12px; font-weight: 400; white-space: nowrap;
   z-index: 20; pointer-events: none;
 }
+
+/* ── Мобильные (iPhone и др., ≤480px): всё влезает в ширину экрана ────── */
+@media (max-width: 480px) {
+  body { padding: 10px 8px; }
+  .window { min-width: 0; padding: 12px; gap: 8px; }
+  .dialog { min-width: 0; padding: 14px; }
+  .row { flex-direction: column; }
+  .row > button { width: 100%; }
+  .rowname { min-width: 0; }
+  .form label { flex: 0 0 118px; }
+}
 </style>
 </head>
 <body>
@@ -224,7 +236,13 @@ input::selection { background: var(--accent); color: #fff; }
   <!-- Заголовок + шестерёнка (как в MainWindow) -->
   <div class="title-row">
     <span class="title">Управление удалённым ПК</span>
-    <button class="gear" id="btnSettings" data-tip="Настройки">⚙</button>
+    <button class="gear" id="btnSettings" data-tip="Настройки" aria-label="Настройки">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="3.2"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.08a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.08a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.08a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+    </button>
   </div>
 
   <!-- Блок «ПК» -->
