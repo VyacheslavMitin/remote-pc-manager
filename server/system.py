@@ -1,12 +1,14 @@
-"""Системная информация: RAM и VRAM процесса LM Studio.
+"""Системная информация: RAM и VRAM процессов LM Studio (app + движок
+llama-server).
 
 Windows (боевая):
     RAM  -> GlobalMemoryStatusEx() (kernel32, stdlib ctypes) — общая и
            свободная физическая память, без PowerShell.
     VRAM -> `nvidia-smi --query-compute-apps=pid,process_name,used_memory`
            — VRAM по процессам (NVIDIA); суммируем все строки, где имя
-           процесса содержит базовое имя (напр. «LM Studio»), — у
-           LM Studio может быть несколько процессов (app + engine).
+           процесса содержит одно из базовых имён (напр. «LM Studio»,
+           «llama-server») — у LM Studio VRAM сидит в движке
+           (llama-server), а не обязательно в самом приложении.
 
 macOS/Linux (разработка/тесты):
     RAM  -> /proc/meminfo (Linux) или sysctl hw.memsize + vm_stat (macOS).
@@ -116,25 +118,28 @@ def _base_name(process_name: str) -> str:
     return p
 
 
-def process_vram_mb(process_name: str) -> int | None:
-    """VRAM, занятый процессом, в МБ (MiB) — через nvidia-smi.
+def process_vram_mb(process_names: str | list[str]) -> int | None:
+    """VRAM, занятый процессами, в МБ (MiB) — через nvidia-smi.
 
     Запрос ``nvidia-smi --query-compute-apps=pid,process_name,used_memory
     --format=csv,noheader,nounits`` выдаёт по одному ряду на приложение,
     использующее GPU: PID, имя процесса, VRAM в MiB. Суммируем used_memory
-    по всем рядам, где имя содержит базовое имя процесса (регистр не
-    важен) — LM Studio может занять VRAM в нескольких процессах.
+    по всем рядам, где имя содержит одно из базовых имён (регистр не
+    важен) — у LM Studio VRAM занят процессами приложения и его
+    inference-движка (llama-server).
 
     Возврат:
-        ``int`` — суммарно МБ (``0``, если процесс на GPU не сидит);
+        ``int`` — суммарно МБ (``0``, если процессы на GPU не сидят);
         ``None`` — nvidia-smi недоступен/не запустился (нет NVIDIA,
-        драйверов или не Windows) — клиент просто не покажет VRAM.
+        драйверов или не Windows) либо имена не переданы — клиент просто
+        не покажет VRAM.
 
     Результат кэшируется на _VRAM_TTL_S секунд (см. модуль).
     """
     global _vram_cache
-    name = (process_name or "").strip()
-    if not name:
+    names = [process_names] if isinstance(process_names, str) else list(process_names or [])
+    needles = [n for n in (_base_name(nm).lower() for nm in names) if n]
+    if not needles:
         return None
     if _vram_cache is not None and time.monotonic() - _vram_cache[0] < _VRAM_TTL_S:
         return _vram_cache[1]
@@ -157,14 +162,14 @@ def process_vram_mb(process_name: str) -> int | None:
         value = 0  # GPU работает, но вычислительных приложений нет
         _vram_cache = (time.monotonic(), value)
         return value
-    needle = _base_name(name).lower()
     total = 0
     for line in out.stdout.splitlines():
         parts = [p.strip() for p in line.split(",")]
         if len(parts) < 3:
             continue
         pname, mem = parts[1], parts[2]
-        if needle not in pname.lower():
+        pl = pname.lower()
+        if not any(nd in pl for nd in needles):
             continue
         try:
             total += int(mem)

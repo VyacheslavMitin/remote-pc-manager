@@ -17,15 +17,17 @@
 Шестерёнка настроек — в верхнем правом углу (только значок);
 внизу слева — строка состояния автопроверки (вкл/выкл + время следующей
 проверки), внизу справа — «IP: <адрес управляемого ПК>» (из настроек).
-Заголовок блока «LM Studio» — версия LM Studio на целевом ПК,
-загруженная модель и её контекст, VRAM, занятый процессом LM Studio:
-«LM Studio (v0.3.25, qwen2.5-7b-instruct, 64K, VRAM 16.0 ГБ)», если
+Заголовок блока «LM Studio» — версия LM Studio на целевом ПК (кроп с
+обоих концов: «v0.4.28.0» → «0.4.28»), загруженная модель и её контекст,
+VRAM, занятый процессами LM Studio:
+«LM Studio (0.3.25, qwen2.5-7b-instruct, 64K, 16 ГБ)», если
 сервер прислал lmstudio_version / lmstudio_model / lmstudio_context /
 lmstudio_vram_mb (модель — первый id из локального API-сервера LM Studio,
 GET /v1/models, остальные, например embedding-модели, в заголовок не
 идут; контекст — контекст загруженной модели в токенах, GET
 /api/v0/models, 65536 показывается как «64K»; VRAM — nvidia-smi,
-суммарно по процессам LM Studio, в гигабайтах);
+суммарно по процессам LM Studio и её движка llama-server, целые
+гигабайты);
 показывается только то, что прислал. Если ничего неизвестно
 (старый сервер или сервер недоступен) — просто «LM Studio»;
 состояние (запущена/не запущена) показывает индикатор-точка.
@@ -93,8 +95,17 @@ def _format_context(tokens: int | str | None) -> str:
     return str(v)
 
 
+def _round_half_up(x: float) -> int:
+    """Математическое округление: 0.5 — в большую сторону (16.5 -> 17).
+
+    Не Python `round()` — он «банковское» (16.5 -> 16). x здесь >= 0.
+    """
+    return int(x + 0.5)
+
+
 def _format_gb(mb: int | str | None) -> str:
-    """МБ для заголовка: 18841 -> «18.4 ГБ». Пусто/не число -> '' (часть
+    """МБ для заголовка: 16384 -> «16 ГБ» (целые ГБ, математическое
+    округление; меньше 1 ГБ — один знак). Пусто/не число -> '' (часть
     заголовка не показывать)."""
     if mb is None or mb == "":
         return ""
@@ -104,11 +115,14 @@ def _format_gb(mb: int | str | None) -> str:
         return ""
     if v < 0:
         return ""
-    return f"{v / 1024:.1f} ГБ"
+    gb = v / 1024
+    if gb < 1:
+        return f"{_round_half_up(gb * 10) / 10:.1f} ГБ"
+    return f"{_round_half_up(gb)} ГБ"
 
 
 def _format_ram(used_mb: int | str | None, total_mb: int | str | None) -> str:
-    """RAM для заголовка: «37 ГБ» (только занято).
+    """RAM для заголовка: «37 ГБ» (только занято, математическое округление).
 
     `total_mb` сервер присылает, но в заголовок не попадает (осталось в API).
     Значение неизвестно или не число — '' (часть заголовка не показывать).
@@ -122,7 +136,9 @@ def _format_ram(used_mb: int | str | None, total_mb: int | str | None) -> str:
     if u < 0:
         return ""
     gb = u / 1024
-    return f"{gb:.1f} ГБ" if gb < 1 else f"{round(gb)} ГБ"
+    if gb < 1:
+        return f"{_round_half_up(gb * 10) / 10:.1f} ГБ"
+    return f"{_round_half_up(gb)} ГБ"
 
 
 class StatusRow(QWidget):
@@ -359,21 +375,24 @@ class MainWindow(QMainWindow):
         vram_mb: int | None = None,
     ) -> None:
         """Заголовок блока «LM Studio» — версия, загруженная модель и её
-        контекст на ПК, VRAM процесса LM Studio:
+        контекст на ПК, VRAM процессов LM Studio (app + движок llama-server):
 
-        «LM Studio (v0.3.25, qwen2.5-7b-instruct, 64K, VRAM 16.0 ГБ)»,
+        «LM Studio (0.3.25, qwen2.5-7b-instruct, 64K, 16 ГБ)»,
         если сервер прислал lmstudio_version / lmstudio_model /
         lmstudio_context / lmstudio_vram_mb; только то, что прислал
-        (версия без модели, модель без версии, контекст — окно модели в
-        токенах, 65536 показывается как «64K», VRAM — ГБ, занятые
-        процессом). Если ничего неизвестно (старый сервер или сервер
-        недоступен) — просто «LM Studio»; состояние (запущена/не
+        (версия кропится с обоих концов: «v0.4.28.0» → «0.4.28», модель
+        без версии, контекст — окно модели в токенах, 65536 показывается
+        как «64K», VRAM — целые ГБ, занятые процессами LM Studio и её
+        движком llama-server). Если ничего неизвестно (старый сервер или
+        сервер недоступен) — просто «LM Studio»; состояние (запущена/не
         запущена) показывает индикатор-точка."""
         parts: list[str] = []
         v = (version or "").strip()
+        if v[:1] in ("v", "V"):
+            v = v[1:]
+        if v.endswith(".0"):
+            v = v[:-2]
         if v:
-            if not v.lower().startswith("v"):
-                v = f"v{v}"
             parts.append(v)
         m = (model or "").strip()
         if m:
@@ -383,7 +402,7 @@ class MainWindow(QMainWindow):
             parts.append(ctx)
         vr = _format_gb(vram_mb)
         if vr:
-            parts.append(f"VRAM {vr}")
+            parts.append(vr)
         if parts:
             self.title_lm.setText(f"LM Studio ({', '.join(parts)})")
         else:

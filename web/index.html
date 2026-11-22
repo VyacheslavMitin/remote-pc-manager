@@ -372,7 +372,8 @@ function formatGb(mb) {
   if (mb === null || mb === undefined) return "";
   const v = parseInt(mb, 10);
   if (!Number.isFinite(v) || v < 0) return "";
-  return `${(v / 1024).toFixed(1)} ГБ`;
+  const gb = v / 1024;
+  return gb < 1 ? `${gb.toFixed(1)} ГБ` : `${Math.round(gb)} ГБ`;
 }
 
 function formatRam(usedMb, totalMb) {
@@ -410,13 +411,15 @@ function setPcTitle(name, osName, uptimeS, ramUsedMb, ramTotalMb) {
 function setLmTitle(version, model, context, vramMb) {
   const parts = [];
   let v = (version || "").trim();
-  if (v) { if (!v.toLowerCase().startsWith("v")) v = `v${v}`; parts.push(v); }
+  if (v[0] === "v" || v[0] === "V") v = v.slice(1);
+  if (v.endsWith(".0")) v = v.slice(0, -2);
+  if (v) parts.push(v);
   const m = (model || "").trim();
   if (m) parts.push(m);
   const ctx = formatContext(context);
   if (ctx) parts.push(ctx);
   const vr = formatGb(vramMb);
-  if (vr) parts.push(`VRAM ${vr}`);
+  if (vr) parts.push(vr);
   $("titleLM").textContent = parts.length ? `LM Studio (${parts.join(", ")})` : "LM Studio";
 }
 
