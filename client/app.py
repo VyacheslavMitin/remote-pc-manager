@@ -205,8 +205,9 @@ class MainWindow(QMainWindow):
         ac = self.cfg.get("auto_check", {})
         self._auto_enabled = bool(ac.get("enabled", True))
         self._auto_interval_s = max(1, int(ac.get("interval_s", 10)))
+        self._auto_mode = False          # идёт автопроверка (да — 1-я строка = сводка)
         self._manual_inflight = 0        # сколько ручных операций сейчас в полёте
-        self._last: dict[str, object] = {"pc": None, "lm": None, "t": None}
+        self._last: dict[str, object] = {"pc": None, "lm": None, "t": None, "model": None}
 
         self.setWindowTitle("Удалённый ПК — менеджер")
         self.setMinimumSize(440, 340)
@@ -303,7 +304,7 @@ class MainWindow(QMainWindow):
         self._timer = QTimer(self)
         self._timer.setInterval(self._auto_interval_ms())
         self._timer.timeout.connect(self._auto_tick)
-        self._refresh_status_line()  # заполнить строку автопроверки (таймер готов)
+        self._refresh_auto_line()   # заполнить строку автопроверки (таймер готов)
         if self._auto_enabled:
             self._timer.start()
             # первая проверка сразу, чтобы не ждать N секунд на «⚪»
@@ -350,6 +351,7 @@ class MainWindow(QMainWindow):
             self._workers.remove(w)
 
     def _msg(self, text: str) -> None:
+        self._auto_mode = False  # ручное сообщение не давим сводкой
         self.status.setText(text)
 
     def _ip_text(self) -> str:
@@ -455,6 +457,7 @@ class MainWindow(QMainWindow):
 
     def _begin_manual(self) -> None:
         self._manual_inflight += 1
+        self._auto_mode = False
 
     def _finish_manual(self, row: StatusRow | None = None) -> None:
         if row is not None:
@@ -462,7 +465,7 @@ class MainWindow(QMainWindow):
         self._manual_inflight = max(0, self._manual_inflight - 1)
         # автопроверка выключена — обнови строку автопроверки (тики не идут)
         if self._manual_inflight == 0 and not self._auto_enabled:
-            self.auto_label.setText(self._auto_line())
+            self._refresh_auto_line()
 
     # ---------- автопроверка ----------
     def _auto_tick(self) -> None:
@@ -472,6 +475,7 @@ class MainWindow(QMainWindow):
         if self._manual_inflight > 0:
             return  # идёт ручная операция — не наступаем на неё
 
+        self._auto_mode = True
         host = self.cfg["pc"]["ip"]
         self.row_pc.set_checking()
         self._run(
@@ -498,6 +502,9 @@ class MainWindow(QMainWindow):
             running = bool(res["lmstudio_running"])
             self.row_lm.set_state(running, "запущена" if running else "не запущена")
             self._last["lm"] = running
+        # «модель загружена» = известен контекст (state==«loaded» в /api/v0/models);
+        # /v1/models отдаёт каталог скачанных моделей даже без загрузки — опираться нельзя.
+        self._last["model"] = (res.get("lmstudio_context") or 0) > 0
         self._set_lm_title(
             res.get("lmstudio_version"), res.get("lmstudio_model"),
             res.get("lmstudio_context"), res.get("lmstudio_vram_mb"))
@@ -511,6 +518,7 @@ class MainWindow(QMainWindow):
     def _apply_status_down(self, msg: str) -> None:
         self.row_lm.set_state(None, "сервер недоступен")
         self._last["lm"] = None
+        self._last["model"] = False
         self._set_lm_title(None)
         self._set_pc_title(None)
         self._last["t"] = time.strftime("%H:%M:%S")
@@ -530,8 +538,30 @@ class MainWindow(QMainWindow):
             return f"Автопроверка: включена, следующая в {nxt}"
         return "Автопроверка: включена"
 
+    def _status_summary(self) -> str:
+        """Первая строка после автопроверки (дословно как statusSummary() в веб)."""
+        if self._last["pc"] is False:
+            return "ПК не отвечает."
+        if self._last["lm"] is False:
+            return "LM Studio не запущен."
+        if self._last["lm"] is True:
+            if self._last["model"]:
+                return "ПК в сети, LM Studio работает, модель загружена."
+            return "ПК в сети, LM Studio работает."
+        if self._last["pc"] is True:
+            return "ПК в сети."
+        return "—"
+
     def _refresh_status_line(self) -> None:
-        """Обновляет строку автопроверки (отдельная строка — сообщение не давит)."""
+        """1-я строка: сводка (только после автопроверки — ручное сообщение не давим)."""
+        if self._auto_mode:
+            line = self._status_summary()
+            if self.status.text() != line:
+                self.status.setText(line)
+        self._refresh_auto_line()
+
+    def _refresh_auto_line(self) -> None:
+        """2-я строка: состояние автопроверки (всегда актуальна)."""
         line = self._auto_line()
         if self.auto_label.text() != line:
             self.auto_label.setText(line)
@@ -690,7 +720,8 @@ class MainWindow(QMainWindow):
                 self._auto_tick()  # сразу перепроверить с новыми настройками
             else:
                 self._timer.stop()
-                self.auto_label.setText(self._auto_line())
+                self._auto_mode = False
+                self._refresh_auto_line()
             self._msg("⚙ Настройки сохранены.")
             self._push_lm_port()
 
