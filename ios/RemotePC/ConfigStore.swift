@@ -21,8 +21,20 @@ final class ConfigStore: ObservableObject {
     @Published var wolRelayToken: String
 
     private static let storageKey = "rpcm.config"
+    /// Общий контейнер настроек (App Group): приложение на iPhone и watch
+    /// видят один и тот же конфиг (группа group.ru.vmitin.remotepc).
+    private static let appGroup = "group.ru.vmitin.remotepc"
+    private static var defaults: UserDefaults {
+        UserDefaults(suiteName: appGroup) ?? .standard
+    }
 
     init() {
+        // Миграция: если конфиг был сохранён в стандартном контейнере
+        // (до введения App Group), копируем его в общий.
+        let legacy = UserDefaults.standard.data(forKey: Self.storageKey)
+        if legacy != nil, Self.defaults.data(forKey: Self.storageKey) == nil {
+            Self.defaults.set(legacy, forKey: Self.storageKey)
+        }
         var ip = "192.168.1.100"
         var mac = "AA:BB:CC:DD:EE:FF"
         var serverPort = 8787
@@ -32,7 +44,7 @@ final class ConfigStore: ObservableObject {
         var relayURL = ""
         var relayToken = ""
 
-        if let data = UserDefaults.standard.data(forKey: Self.storageKey),
+        if let data = Self.defaults.data(forKey: Self.storageKey),
            let saved = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             let pc = saved["pc"] as? [String: Any]
             let server = saved["server"] as? [String: Any]
@@ -73,7 +85,7 @@ final class ConfigStore: ObservableObject {
             ],
         ]
         if let data = try? JSONSerialization.data(withJSONObject: dict) {
-            UserDefaults.standard.set(data, forKey: Self.storageKey)
+            Self.defaults.set(data, forKey: Self.storageKey)
         }
     }
 

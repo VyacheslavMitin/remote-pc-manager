@@ -145,64 +145,29 @@ final class AppModel: ObservableObject {
         // Поэтому первичный путь — relay: веб-сервер (NAS) сам шлёт magic
         // packet broadcast'ом (то же, что делает веб-версия). Если relay не
         // задан или недоступен — отправка напрямую (unicast) как резерв.
-        if !relayURL.isEmpty, let base = URL(string: relayURL) {
+        if !relayURL.isEmpty {
             do {
-                let (sent, to, rmac) = try await wolViaRelay(base: base, mac: mac)
-                statusLine = "WoL: relay отправил broadcast (\(sent) шт → \(to), MAC \(rmac))."
+                let (sent, _, rmac) = try await WoLRelay.send(relayURL: relayURL,
+                                                               token: cfg.wolRelayToken,
+                                                               mac: mac)
+                statusLine = "✅ WoL: ×\(sent) → MAC \(rmac)"
             } catch {
                 do {
-                    let (sent, to, _) = try WoL.send(macRaw: mac, unicastIP: cfg.pcIP)
-                    statusLine = "WoL: relay: \(error.localizedDescription). Напрямую: \(sent) шт → \(to) (unicast, может не будить)."
+                    let (sent, _, _) = try WoL.send(macRaw: mac, unicastIP: cfg.pcIP)
+                    statusLine = "⚠️ WoL: relay недоступен — ×\(sent), может не будить"
                 } catch {
-                    statusLine = "WoL: relay: \(error.localizedDescription)"
+                    statusLine = "❌ WoL: \(error.localizedDescription)"
                 }
             }
             return
         }
 
         do {
-            let (sent, to, dmac) = try WoL.send(macRaw: mac, unicastIP: cfg.pcIP)
-            statusLine = "WoL: magic packet отправлен напрямую (\(sent) шт → \(to), MAC \(dmac))."
+            let (sent, _, dmac) = try WoL.send(macRaw: mac, unicastIP: cfg.pcIP)
+            statusLine = "✅ WoL: ×\(sent) → MAC \(dmac)"
         } catch {
-            statusLine = "WoL: \(error.localizedDescription)"
+            statusLine = "❌ WoL: \(error.localizedDescription)"
         }
-    }
-
-    /// POST {relay}/wol — веб-сервер (NAS) шлёт magic packet broadcast'ом.
-    /// Тот же механизм, что в веб-версии (браузер/айфон сам raw-UDP broadcast
-    /// слать не могут). Контракт: web/serve.py → {"ok": true, "sent", "to", "mac"}.
-    private func wolViaRelay(base: URL, mac: String) async throws -> (sent: Int, to: String, mac: String) {
-        var req = URLRequest(url: base.appendingPathComponent("wol"))
-        req.httpMethod = "POST"
-        req.timeoutInterval = 8
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let token = cfg.wolRelayToken.trimmingCharacters(in: .whitespaces)
-        if !token.isEmpty {
-            req.setValue(token, forHTTPHeaderField: "X-Token")
-        }
-        req.httpBody = try JSONSerialization.data(withJSONObject: ["mac": mac])
-
-        let (data, response) = try await URLSession.shared.data(for: req)
-        guard let http = response as? HTTPURLResponse else {
-            throw NSError(domain: "WoL", code: -1,
-                          userInfo: [NSLocalizedDescriptionKey: "relay: некорректный ответ сервера"])
-        }
-        if http.statusCode == 401 {
-            throw NSError(domain: "WoL", code: 401,
-                          userInfo: [NSLocalizedDescriptionKey: "relay: неверный или не задан токен (401)"])
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw NSError(domain: "WoL", code: http.statusCode,
-                          userInfo: [NSLocalizedDescriptionKey: "relay: HTTP \(http.statusCode) от сервера"])
-        }
-        let json = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
-        guard (json["ok"] as? Bool) == true else {
-            let msg = json["error"] as? String ?? "неизвестная ошибка"
-            throw NSError(domain: "WoL", code: -1, userInfo: [NSLocalizedDescriptionKey: "relay: \(msg)"])
-        }
-        return ((json["sent"] as? Int) ?? 0,
-                (json["to"] as? String) ?? "?",
-                (json["mac"] as? String) ?? mac)
     }
 
     func hibernate() async {
