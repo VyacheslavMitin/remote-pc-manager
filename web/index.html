@@ -630,7 +630,7 @@ async function onCheckLM() {
 async function onWol() {
   const mac = cfg.pc.mac;
   beginManual();
-  msg(`Отправляю magic packet → ${mac} (будит с мака)…`);
+  msg("⏻ Пробуждаю ПК…");
   try {
     const r = await fetch("/wol", {
       method: "POST",
@@ -640,9 +640,9 @@ async function onWol() {
     });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
-    msg(`✅ Magic packet: ${j.to || mac} (MAC ${j.mac || mac}, ×${j.sent || 3}).`);
+    msg(`✅ WoL: ×${j.sent || 3} → MAC ${j.mac || mac}`);
   } catch (e) {
-    msg(`❌ WoL: ${e.message} (эндпоинт /wol — на маке, serve.py)`);
+    msg(`❌ WoL: ${e.message}`);
   }
   finishManual();
 }

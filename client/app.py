@@ -570,10 +570,10 @@ class MainWindow(QMainWindow):
     def on_wol(self) -> None:
         mac = self.cfg["pc"]["mac"]
         self._begin_manual()
-        self._msg(f"Отправляю magic packet → {mac} …")
+        self._msg("⏻ Пробуждаю ПК …")
 
         def _ok(res):
-            self._msg(f"✅ Magic packet: {res['to']} (MAC {res['mac']}, ×{res['sent']}).")
+            self._msg(f"✅ WoL: ×{res['sent']} → MAC {res['mac']}")
 
         self._run(lambda: send_wol(mac, count=3), ok=_ok,
                   on_finish=lambda: self._finish_manual())
