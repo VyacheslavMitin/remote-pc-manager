@@ -34,3 +34,6 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: ru.vmitin.remotepc
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         DEVELOPMENT_TEAM: 49ZG648WG8   # Personal Team (Вячеслав Митин)
+        # NOTE: entitlement com.apple.developer.networking.multicast (broadcast WoL)
+        # НЕДОСТУПЕН для Personal Team — Apple требует платный аккаунт.
+        # WoL в iOS-клиенте идёт через relay (POST /wol на веб-сервере NAS).

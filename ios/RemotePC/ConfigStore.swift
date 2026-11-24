@@ -14,6 +14,11 @@ final class ConfigStore: ObservableObject {
     @Published var lmAPIPort: Int
     @Published var autoCheckEnabled: Bool
     @Published var autoCheckIntervalS: Int
+    // WoL relay: адрес веб-сервера (NAS/мак), который шлёт magic packet сам
+    // (iOS не умеет UDP-broadcast — Apple требует платный аккаунт).
+    // Пусто = отправка напрямую с айфона (только unicast, может не будить).
+    @Published var wolRelayURL: String
+    @Published var wolRelayToken: String
 
     private static let storageKey = "rpcm.config"
 
@@ -24,6 +29,8 @@ final class ConfigStore: ObservableObject {
         var lmAPIPort = 1234
         var autoOn = true
         var interval = 10
+        var relayURL = ""
+        var relayToken = ""
 
         if let data = UserDefaults.standard.data(forKey: Self.storageKey),
            let saved = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
@@ -37,6 +44,9 @@ final class ConfigStore: ObservableObject {
             lmAPIPort = (lm?["api_port"] as? Int) ?? lmAPIPort
             autoOn = (auto?["enabled"] as? Bool) ?? autoOn
             interval = (auto?["interval_s"] as? Int) ?? interval
+            let relay = saved["relay"] as? [String: Any]
+            relayURL = (relay?["url"] as? String) ?? relayURL
+            relayToken = (relay?["token"] as? String) ?? relayToken
         }
         self.pcIP = ip
         self.pcMAC = mac
@@ -44,6 +54,8 @@ final class ConfigStore: ObservableObject {
         self.lmAPIPort = lmAPIPort
         self.autoCheckEnabled = autoOn
         self.autoCheckIntervalS = interval
+        self.wolRelayURL = relayURL
+        self.wolRelayToken = relayToken
     }
 
     func save() {
@@ -55,6 +67,10 @@ final class ConfigStore: ObservableObject {
             "server": ["port": serverPort],
             "lmstudio": ["api_port": lmAPIPort],
             "auto_check": ["enabled": autoCheckEnabled, "interval_s": autoCheckIntervalS],
+            "relay": [
+                "url": wolRelayURL.trimmingCharacters(in: .whitespaces),
+                "token": wolRelayToken.trimmingCharacters(in: .whitespaces),
+            ],
         ]
         if let data = try? JSONSerialization.data(withJSONObject: dict) {
             UserDefaults.standard.set(data, forKey: Self.storageKey)

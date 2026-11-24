@@ -14,6 +14,8 @@ struct SettingsView: View {
     @State private var lmPort: String
     @State private var autoOn: Bool
     @State private var interval: Int
+    @State private var relayURL: String
+    @State private var relayToken: String
     @State private var saveError: String?
 
     init(model: AppModel, onSaved: @escaping () -> Void) {
@@ -26,6 +28,8 @@ struct SettingsView: View {
         _lmPort = State(initialValue: String(c.lmAPIPort))
         _autoOn = State(initialValue: c.autoCheckEnabled)
         _interval = State(initialValue: c.autoCheckIntervalS)
+        _relayURL = State(initialValue: c.wolRelayURL)
+        _relayToken = State(initialValue: c.wolRelayToken)
     }
 
     var body: some View {
@@ -50,6 +54,22 @@ struct SettingsView: View {
                         .keyboardType(.numberPad)
                 } header: {
                     Text("Сервер")
+                }
+
+                Section {
+                    TextField("Веб-сервер (relay WoL)", text: $relayURL,
+                              prompt: Text("http://192.168.1.40:8090"))
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                    TextField("Токен (X-Token, если включён)", text: $relayToken)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                } header: {
+                    Text("WoL relay (рекомендуется)")
+                } footer: {
+                    Text("iOS не умеет отправлять UDP-broadcast (Apple требует платный аккаунт). Будите ПК через веб-сервер: он сам шлёт magic packet — так же, как веб-версия. Адрес вводите без /wol. Пусто = отправка напрямую с айфона (unicast, может не будить спящий ПК).")
+                        .font(.system(size: 12))
+                        .foregroundColor(Theme.muted)
                 }
 
                 Section {
@@ -110,6 +130,8 @@ struct SettingsView: View {
         model.cfg.lmAPIPort = lp
         model.cfg.autoCheckEnabled = autoOn
         model.cfg.autoCheckIntervalS = max(2, interval)
+        model.cfg.wolRelayURL = relayURL.trimmingCharacters(in: .whitespaces)
+        model.cfg.wolRelayToken = relayToken.trimmingCharacters(in: .whitespaces)
         model.cfg.save()
 
         // Как десктоп: при смене порта LM — сразу применить на сервере.
