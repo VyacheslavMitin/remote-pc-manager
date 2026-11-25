@@ -1,4 +1,5 @@
 import SwiftUI
+import WatchConnectivity
 
 /// Настройки (порт SettingsDialog из client/settings_dialog.py).
 /// Сохраняет в ConfigStore (UserDefaults) и, как десктоп, при смене порта LM
@@ -17,6 +18,7 @@ struct SettingsView: View {
     @State private var relayURL: String
     @State private var relayToken: String
     @State private var saveError: String?
+    @State private var watchStatus: String?
 
     init(model: AppModel, onSaved: @escaping () -> Void) {
         self.model = model
@@ -73,6 +75,26 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Button {
+                        sendToWatch()
+                    } label: {
+                        Label("Отправить на Apple Watch",
+                              systemImage: "applewatch.side.right")
+                    }
+                    if let ws = watchStatus {
+                        Text(ws)
+                            .font(.system(size: 12))
+                            .foregroundColor(ws.hasPrefix("❌") ? Theme.danger : Theme.muted)
+                    }
+                } header: {
+                    Text("Apple Watch")
+                } footer: {
+                    Text("Настройки iPhone и часов не общие (контейнер локален для устройства), поэтому перенос идёт по Bluetooth: WatchConnectivity. Отправьте здесь — на часах они появятся при открытии приложения (или: Настройки → «Синхронизировать с iPhone»).")
+                        .font(.system(size: 12))
+                        .foregroundColor(Theme.muted)
+                }
+
+                Section {
                     Toggle("Автопроверка", isOn: $autoOn)
                     if autoOn {
                         Stepper("Каждые \(interval) с", value: $interval, in: 2...60)
@@ -105,6 +127,23 @@ struct SettingsView: View {
         }
     }
 
+    /// Отправить настройки на спаренные Apple Watch (WatchConnectivity).
+    /// Контекст хранится на часах и доставляется при открытии watch-приложения.
+    private func sendToWatch() {
+        guard WCSession.isSupported() else {
+            watchStatus = "❌ WatchConnectivity недоступен (часы не спарены?)"
+            return
+        }
+        WatchBridge.shared.pushSettings(
+            ip: ip.trimmingCharacters(in: .whitespacesAndNewlines),
+            mac: mac.trimmingCharacters(in: .whitespacesAndNewlines),
+            serverPort: Int(serverPort.trimmingCharacters(in: .whitespaces)) ?? model.cfg.serverPort,
+            relayURL: relayURL.trimmingCharacters(in: .whitespacesAndNewlines),
+            relayToken: relayToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+        watchStatus = "✅ Отправлено. Откройте приложение на часах — настройки применятся."
+    }
+
     private func save() {
         saveError = nil
         let ipV = ip.trimmingCharacters(in: .whitespaces)
@@ -133,6 +172,11 @@ struct SettingsView: View {
         model.cfg.wolRelayURL = relayURL.trimmingCharacters(in: .whitespaces)
         model.cfg.wolRelayToken = relayToken.trimmingCharacters(in: .whitespaces)
         model.cfg.save()
+
+        // Настройки сохранены — сразу отправить на Apple Watch (если спарены).
+        if WCSession.isSupported() {
+            sendToWatch()
+        }
 
         // Как десктоп: при смене порта LM — сразу применить на сервере.
         if lp != oldLM {

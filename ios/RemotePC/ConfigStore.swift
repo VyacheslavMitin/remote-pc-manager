@@ -70,23 +70,32 @@ final class ConfigStore: ObservableObject {
         self.wolRelayToken = relayToken
     }
 
-    func save() {
+    /// true = App Group доступен (настройки общие с iPhone/iPad),
+    /// false = контейнер не активен — конфиг пишется в локальный .standard.
+    static var usesAppGroup: Bool {
+        UserDefaults(suiteName: appGroup) != nil
+    }
+
+    /// Сохранить и ПРОВЕРИТЬ запись (чтение обратно): true = записано.
+    @discardableResult
+    func save() -> Bool {
         let dict: [String: Any] = [
             "pc": [
-                "ip": pcIP.trimmingCharacters(in: .whitespaces),
+                "ip": pcIP.trimmingCharacters(in: .whitespacesAndNewlines),
                 "mac": ConfigStore.normalizeMAC(pcMAC),
             ],
             "server": ["port": serverPort],
             "lmstudio": ["api_port": lmAPIPort],
             "auto_check": ["enabled": autoCheckEnabled, "interval_s": autoCheckIntervalS],
             "relay": [
-                "url": wolRelayURL.trimmingCharacters(in: .whitespaces),
-                "token": wolRelayToken.trimmingCharacters(in: .whitespaces),
+                "url": wolRelayURL.trimmingCharacters(in: .whitespacesAndNewlines),
+                "token": wolRelayToken.trimmingCharacters(in: .whitespacesAndNewlines),
             ],
         ]
-        if let data = try? JSONSerialization.data(withJSONObject: dict) {
-            Self.defaults.set(data, forKey: Self.storageKey)
-        }
+        guard let data = try? JSONSerialization.data(withJSONObject: dict) else { return false }
+        let defaults = Self.defaults
+        defaults.set(data, forKey: Self.storageKey)
+        return defaults.data(forKey: Self.storageKey) == data
     }
 
     /// MAC в формат aa:bb:cc:dd:ee:ff (как _normalize_mac в client/config.py).

@@ -55,6 +55,9 @@ targets:
     info:
       path: Watch/Info.plist
       properties:
+        WKApplication: true   # приложение watchOS
+        # NOTE: WKWatchOnly НЕ задаём — приложение работает в паре с iOS-компаньоном
+        # (ru.vmitin.remotepc), чтобы передавать настройки через WatchConnectivity.
         CFBundleDisplayName: "Удалённый ПК"
         CFBundleShortVersionString: "1.0.0"
         CFBundleVersion: "1"
