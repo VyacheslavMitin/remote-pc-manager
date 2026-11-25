@@ -56,8 +56,14 @@ targets:
       path: Watch/Info.plist
       properties:
         WKApplication: true   # приложение watchOS
-        # NOTE: WKWatchOnly НЕ задаём — приложение работает в паре с iOS-компаньоном
-        # (ru.vmitin.remotepc), чтобы передавать настройки через WatchConnectivity.
+        # Companion-приложение (НЕ standalone/WKWatchOnly): зависит от iOS-компаньона
+        # ru.vmitin.remotepc, чтобы принимать настройки через WatchConnectivity.
+        # Standalone (WKWatchOnly) НЕЛЬЗЯ: Apple запрещает таким app'ам пользоваться
+        # WatchConnectivity для передачи данных от iOS-компаньона
+        # (WCSession «counterpart app not installed»).
+        # Ключ обязателен: watch app обязан иметь либо WKWatchOnly, либо
+        # WKCompanionAppBundleIdentifier (иначе install fail, CoreDeviceError 3002).
+        WKCompanionAppBundleIdentifier: ru.vmitin.remotepc
         CFBundleDisplayName: "Удалённый ПК"
         CFBundleShortVersionString: "1.0.0"
         CFBundleVersion: "1"

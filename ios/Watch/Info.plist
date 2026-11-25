@@ -29,5 +29,7 @@
 	<string>Приложению нужен доступ к локальной сети, чтобы видеть сервер на ПК и отправлять WoL.</string>
 	<key>WKApplication</key>
 	<true/>
+	<key>WKCompanionAppBundleIdentifier</key>
+	<string>ru.vmitin.remotepc</string>
 </dict>
 </plist>
