@@ -6,6 +6,12 @@
   "server": {
     "port": 8787
   },
+  "lmstudio": {
+    "api_port": 1234
+  },
+  "strata": {
+    "api_port": 8080
+  },
   "auto_check": {
     "enabled": true,
     "interval_s": 10

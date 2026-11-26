@@ -6,8 +6,8 @@
 индикатора «Сервер» нет.
 Включение автопроверки и её интервал настраиваются только в «⚙ Настройки».
 Пока идёт проверка, индикатор строки жёлтый.
-Раскладка: главное окно разделено на два блока — «ПК» и «LM Studio»;
-в каждом блоке строка проверки состояния (индикатор + «Проверить»)
+Раскладка: главное окно разделено на три блока — «ПК», «LM Studio» и
+«Strata»; в каждом блоке строка проверки состояния (индикатор + «Проверить»)
 сверху, под ней — кнопки действий.
 Заголовок блока «ПК» — «ПК (имя, ОС, аптайм, 37 ГБ)», если
 сервер ответил (pc_name, os_name, uptime_s, ram_used_mb
@@ -31,6 +31,15 @@ GET /v1/models, остальные, например embedding-модели, в 
 показывается только то, что прислал. Если ничего неизвестно
 (старый сервер или сервер недоступен) — просто «LM Studio»;
 состояние (запущена/не запущена) показывает индикатор-точка.
+Заголовок блока «Strata» — модель Strata на целевом ПК, её контекст и
+VRAM: «Strata (qwen3.8-flash-next-iq3_s, 128K, 14 ГБ)», если сервер
+прислал strata_model / strata_context / strata_vram_mb (берутся из
+открытого GET /health Strata — её /v1/models требует API-ключ и клиентом
+не опрашивается). Strata — OpenAI-совместимый сервер (API как у LM Studio),
+порт её API задаётся в настройках (по умолчанию 8080) и пушится на сервер
+командой set_strata_port.
+Нижняя сводка сообщает, что активно: «активна LM Studio», «активна Strata»
+или «активны обе: LM Studio и Strata».
 """
 from __future__ import annotations
 
@@ -145,11 +154,12 @@ class StatusRow(QWidget):
     """Строка: [●] [состояние] … [кнопка «Проверить»].
 
     Индикатор — у левого края, рядом живой статус:
-    ПК — «в сети»/«не в сети», LM Studio — «работает»/«остановлен».
+    ПК — «в сети»/«не в сети», LM Studio и Strata — «работает»/«остановлен».
     """
 
     _PC = {True: "в сети", False: "не в сети", None: "—"}
     _LM = {True: "работает", False: "остановлен", None: "—"}
+    _ST = {True: "работает", False: "остановлен", None: "—"}
 
     def __init__(self, kind: str, on_check, parent=None):
         super().__init__(parent)
@@ -176,7 +186,7 @@ class StatusRow(QWidget):
         h.addWidget(self.btn)
 
     def _state_text(self, ok: bool | None) -> str:
-        table = self._PC if self._kind == "pc" else self._LM
+        table = {"pc": self._PC, "lm": self._LM}.get(self._kind, self._ST)
         return table.get(ok, "—")
 
     def set_state(self, ok: bool | None, tooltip: str = "") -> None:
@@ -207,10 +217,11 @@ class MainWindow(QMainWindow):
         self._auto_interval_s = max(1, int(ac.get("interval_s", 10)))
         self._auto_mode = False          # идёт автопроверка (да — 1-я строка = сводка)
         self._manual_inflight = 0        # сколько ручных операций сейчас в полёте
-        self._last: dict[str, object] = {"pc": None, "lm": None, "t": None, "model": None}
+        self._last: dict[str, object] = {"pc": None, "lm": None, "t": None, "model": None,
+                                         "strata": None, "strata_loaded": False}
 
         self.setWindowTitle("Удалённый ПК — менеджер")
-        self.setMinimumSize(440, 340)
+        self.setMinimumSize(440, 470)
 
         central = QWidget()
         central.setObjectName("central")
@@ -282,6 +293,24 @@ class MainWindow(QMainWindow):
         lm.addWidget(self.btn_stop, 1)
         lmb.addLayout(lm)
         root.addWidget(block_lm)
+
+        # ── Блок «Strata» ── проверка состояния сверху, затем действия
+        # (Strata — OpenAI-совместимый сервер, API как у LM Studio)
+        block_st, stb, self.title_st = self._block("Strata")
+        self.row_st = StatusRow("strata", self.on_check_strata)
+        stb.addWidget(self.row_st)
+        st = QHBoxLayout()
+        st.setSpacing(10)
+        self.btn_start_st = QPushButton("▶  Включить Strata")
+        self.btn_start_st.setObjectName("success")
+        self.btn_start_st.clicked.connect(self.on_start_strata)
+        st.addWidget(self.btn_start_st, 1)
+        self.btn_stop_st = QPushButton("⏹  Выключить Strata")
+        self.btn_stop_st.setObjectName("danger")
+        self.btn_stop_st.clicked.connect(self.on_stop_strata)
+        st.addWidget(self.btn_stop_st, 1)
+        stb.addLayout(st)
+        root.addWidget(block_st)
 
         root.addStretch(1)
 
@@ -432,6 +461,35 @@ class MainWindow(QMainWindow):
         else:
             self.title_lm.setText("LM Studio")
 
+    def _set_strata_title(
+        self,
+        model: str | None = None,
+        context: int | None = None,
+        vram_mb: int | None = None,
+    ) -> None:
+        """Заголовок блока «Strata» — модель, её контекст и VRAM:
+
+        «Strata (qwen3.8-flash-next-iq3_s, 128K, 14 ГБ)», если сервер
+        прислал strata_model / strata_context / strata_vram_mb (из
+        открытого /health Strata; контекст 131072 -> «128K», VRAM — целые
+        ГБ). Только то, что прислал; если ничего неизвестно (старый сервер
+        или сервер недоступен) — просто «Strata»; состояние показывает
+        индикатор-точка."""
+        parts: list[str] = []
+        m = (model or "").strip()
+        if m:
+            parts.append(m)
+        ctx = _format_context(context)
+        if ctx:
+            parts.append(ctx)
+        vr = _format_gb(vram_mb)
+        if vr:
+            parts.append(vr)
+        if parts:
+            self.title_st.setText(f"Strata ({', '.join(parts)})")
+        else:
+            self.title_st.setText("Strata")
+
     def _block(self, title: str) -> tuple[QFrame, QVBoxLayout, QLabel]:
         """Собирает блок-панель: заголовок секции + внутренний layout.
 
@@ -485,6 +543,7 @@ class MainWindow(QMainWindow):
         )
         sh, sp = self._server()
         self.row_lm.set_checking()
+        self.row_st.set_checking()
         self._run(
             lambda: api_request(sh, sp, "status"),
             ok=lambda res: self._apply_status(res),
@@ -508,6 +567,14 @@ class MainWindow(QMainWindow):
         self._set_lm_title(
             res.get("lmstudio_version"), res.get("lmstudio_model"),
             res.get("lmstudio_context"), res.get("lmstudio_vram_mb"))
+        if "strata_running" in res:
+            st_running = bool(res["strata_running"])
+            self.row_st.set_state(st_running, "запущена" if st_running else "не запущена")
+            self._last["strata"] = st_running
+        self._last["strata_loaded"] = bool(res.get("strata_loaded"))
+        self._set_strata_title(
+            res.get("strata_model"), res.get("strata_context"),
+            res.get("strata_vram_mb"))
         self._set_pc_title(
             res.get("pc_name"), res.get("os_name"), res.get("uptime_s"),
             res.get("ram_used_mb"), res.get("ram_total_mb")
@@ -519,7 +586,11 @@ class MainWindow(QMainWindow):
         self.row_lm.set_state(None, "сервер недоступен")
         self._last["lm"] = None
         self._last["model"] = False
+        self.row_st.set_state(None, "сервер недоступен")
+        self._last["strata"] = None
+        self._last["strata_loaded"] = False
         self._set_lm_title(None)
+        self._set_strata_title(None)
         self._set_pc_title(None)
         self._last["t"] = time.strftime("%H:%M:%S")
         self._refresh_status_line()
@@ -539,15 +610,22 @@ class MainWindow(QMainWindow):
         return "Автопроверка: включена"
 
     def _status_summary(self) -> str:
-        """Первая строка после автопроверки (дословно как statusSummary() в веб)."""
+        """Первая строка после автопроверки: что активно — LM Studio,
+        Strata или обе («активна LM Studio» / «активна Strata» /
+        «активны обе: LM Studio и Strata»)."""
         if self._last["pc"] is False:
             return "ПК не отвечает."
-        if self._last["lm"] is False:
-            return "LM Studio не запущен."
-        if self._last["lm"] is True:
-            if self._last["model"]:
-                return "ПК в сети, LM Studio работает, модель загружена."
-            return "ПК в сети, LM Studio работает."
+        lm = self._last["lm"]
+        st = self._last.get("strata")
+        if lm and st:
+            return "ПК в сети, активны обе: LM Studio и Strata."
+        if lm:
+            return "ПК в сети, активна LM Studio."
+        if st:
+            return "ПК в сети, активна Strata."
+        if lm is False or st is False:
+            # хотя бы одна подтверждённо остановлена, активна ни одна
+            return "ПК в сети, ничего не активно."
         if self._last["pc"] is True:
             return "ПК в сети."
         return "—"
@@ -610,6 +688,13 @@ class MainWindow(QMainWindow):
             self._set_lm_title(
                 res.get("lmstudio_version"), res.get("lmstudio_model"),
                 res.get("lmstudio_context"), res.get("lmstudio_vram_mb"))
+            if "strata_running" in res:
+                st_running = bool(res["strata_running"])
+                self.row_st.set_state(st_running, "запущена" if st_running else "не запущена")
+                self._last["strata"] = st_running
+            self._set_strata_title(
+                res.get("strata_model"), res.get("strata_context"),
+                res.get("strata_vram_mb"))
             self._set_pc_title(
                 res.get("pc_name"), res.get("os_name"), res.get("uptime_s"),
                 res.get("ram_used_mb"), res.get("ram_total_mb")
@@ -688,6 +773,96 @@ class MainWindow(QMainWindow):
 
         self._run(lambda: api_request(host, port, "status"), ok=_ok, fail=_fail)
 
+    # ---------- Strata ----------
+    def on_check_strata(self, row: StatusRow) -> None:
+        host, port = self._server()
+        row.btn.setEnabled(False)
+        self._begin_manual()
+        row.set_checking()
+        self._msg("Проверяю состояние Strata …")
+
+        def _ok(res):
+            running = bool(res.get("strata_running"))
+            self.row_st.set_state(running, "запущена" if running else "не запущена")
+            self._last["strata"] = running
+            self._last["strata_loaded"] = bool(res.get("strata_loaded"))
+            self._set_strata_title(
+                res.get("strata_model"), res.get("strata_context"),
+                res.get("strata_vram_mb"))
+            self._set_pc_title(
+                res.get("pc_name"), res.get("os_name"), res.get("uptime_s"),
+                res.get("ram_used_mb"), res.get("ram_total_mb")
+            )
+            self._msg(f"Strata: {'🟢 запущена' if running else '🔴 не запущена'}")
+
+        def _fail(msg):
+            self.row_st.set_state(None, f"не проверено: {msg}")
+            self._last["strata"] = None
+            self._set_strata_title(None)
+            self._set_pc_title(None)
+            self._msg(f"Strata: не проверено — {msg}")
+
+        self._run(lambda: api_request(host, port, "status"), ok=_ok, fail=_fail,
+                  on_finish=lambda: self._finish_manual(row))
+
+    def on_start_strata(self) -> None:
+        host, port = self._server()
+        self._begin_manual()
+        self._msg("Отправляю команду: запустить Strata …")
+
+        def _ok(res):
+            extra = f" (PID {res['pid']})" if res.get("pid") else ""
+            self._msg(f"✅ Strata: запуск отправлен{extra}.")
+            self._check_strata_quiet()
+
+        def _fail(msg):
+            self._msg(f"❌ Не удалось запустить Strata: {msg}")
+
+        self._run(lambda: api_request(host, port, "start_strata"), ok=_ok, fail=_fail,
+                  on_finish=lambda: self._finish_manual())
+
+    def on_stop_strata(self) -> None:
+        host, port = self._server()
+        self._begin_manual()
+        self._msg("Отправляю команду: остановить Strata …")
+
+        def _ok(res):
+            note = res.get("note")
+            self._msg(f"✅ Strata: {note}." if note else "✅ Strata: остановлена.")
+            self._check_strata_quiet()
+
+        def _fail(msg):
+            self._msg(f"❌ Не удалось остановить Strata: {msg}")
+
+        self._run(lambda: api_request(host, port, "stop_strata"), ok=_ok, fail=_fail,
+                  on_finish=lambda: self._finish_manual())
+
+    def _check_strata_quiet(self) -> None:
+        """После вкл/выкл обновляет индикатор Strata, не трогая статус-бар."""
+        host, port = self._server()
+        self.row_st.set_checking()
+
+        def _ok(res):
+            self.row_st.set_state(
+                bool(res.get("strata_running")),
+                "запущена" if res.get("strata_running") else "не запущена")
+            self._last["strata"] = bool(res.get("strata_running"))
+            self._last["strata_loaded"] = bool(res.get("strata_loaded"))
+            self._set_strata_title(
+                res.get("strata_model"), res.get("strata_context"),
+                res.get("strata_vram_mb"))
+            self._set_pc_title(
+                res.get("pc_name"), res.get("os_name"), res.get("uptime_s"),
+                res.get("ram_used_mb"), res.get("ram_total_mb")
+            )
+
+        def _fail(msg):
+            self.row_st.set_state(None, f"не проверено: {msg}")
+            self._set_strata_title(None)
+            self._set_pc_title(None)
+
+        self._run(lambda: api_request(host, port, "status"), ok=_ok, fail=_fail)
+
     def on_hibernate(self) -> None:
         host, port = self._server()
         self._begin_manual()
@@ -724,6 +899,7 @@ class MainWindow(QMainWindow):
                 self._refresh_auto_line()
             self._msg("⚙ Настройки сохранены.")
             self._push_lm_port()
+            self._push_strata_port()
 
     def _push_lm_port(self) -> None:
         """Применяет порт API LM Studio на сервере (команда set_lm_port):
@@ -748,5 +924,31 @@ class MainWindow(QMainWindow):
         self._run(
             lambda: api_request(host, port, "set_lm_port", timeout=6.0,
                                 args={"port": lm_port}),
+            ok=_ok, fail=_fail,
+        )
+
+    def _push_strata_port(self) -> None:
+        """Применяет порт API Strata на сервере (команда set_strata_port):
+        сервер сохраняет его в свой config.json и сразу использует новое
+        значение. Значение дублируется в конфиге клиента — поле в
+        настройках не теряет значение, даже если сервер недоступен или
+        это старая версия без команды set_strata_port."""
+        host, port = self._server()
+        st_port = int(self.cfg.get("strata", {}).get("api_port", 8080))
+
+        def _ok(res):
+            got = res.get("strata_api_port")
+            self._msg(f"⚙ Порт Strata применён на сервере: {got or st_port}.")
+
+        def _fail(msg):
+            self._msg(
+                f"⚙ Порт Strata сохранён локально ({st_port}), но применить "
+                f"на сервере не удалось: {msg}. Если сервер старой версии — "
+                f"задайте strata.api_port в его config.json вручную."
+            )
+
+        self._run(
+            lambda: api_request(host, port, "set_strata_port", timeout=6.0,
+                                args={"port": st_port}),
             ok=_ok, fail=_fail,
         )

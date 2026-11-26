@@ -1,4 +1,5 @@
-"""Диалог настроек клиента: IP, MAC, порты (сервер + API LM Studio), автопроверка."""
+"""Диалог настроек клиента: IP, MAC, порты (сервер + API LM Studio + API
+Strata), автопроверка."""
 from __future__ import annotations
 
 from PySide6.QtWidgets import (
@@ -44,11 +45,20 @@ class SettingsDialog(QDialog):
             "часть). Стандарт LM Studio — 1234. Сохраняется в конфиге сервера "
             "(lmstudio.api_port)."
         )
+        self.stport = QSpinBox()
+        self.stport.setRange(1, 65535)
+        self.stport.setValue(int(cfg.get("strata", {}).get("api_port", 8080)))
+        self.stport.setToolTip(
+            "Порт локального API-сервера Strata на управляемом ПК (серверная "
+            "часть; API OpenAI-совместимый, как у LM Studio). Стандарт Strata — "
+            "8080. Сохраняется в конфиге сервера (strata.api_port)."
+        )
 
         form.addRow("IP компьютера", self.ip)
         form.addRow("MAC (Wake-on-LAN)", self.mac)
         form.addRow("Порт сервера", self.sport)
         form.addRow("Порт API LM Studio", self.lmport)
+        form.addRow("Порт API Strata", self.stport)
         layout.addLayout(form)
 
         # --- Автопроверка ---
@@ -117,6 +127,7 @@ class SettingsDialog(QDialog):
             "pc": {"ip": self.ip.text().strip(), "mac": mac_norm},
             "server": {"port": self.sport.value()},
             "lmstudio": {"api_port": self.lmport.value()},
+            "strata": {"api_port": self.stport.value()},
             "auto_check": {
                 "enabled": self.auto_enabled.isChecked(),
                 "interval_s": self.auto_interval.value(),

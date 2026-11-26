@@ -6,6 +6,8 @@
     server.port       — порт HTTP-сервера (хост сервера = pc.ip)
     lmstudio.api_port — порт локального API-сервера LM Studio на управляемом ПК
                         (серверная часть; стандарт LM Studio — 1234)
+    strata.api_port   — порт локального API-сервера Strata на управляемом ПК
+                        (OpenAI-совместимый, как у LM Studio; стандарт — 8080)
     auto_check.enabled    — автопроверка состояния: вкл/выкл
     auto_check.interval_s — интервал автопроверки, в секундах
 """
@@ -27,6 +29,9 @@ DEFAULTS = {
     },
     "lmstudio": {
         "api_port": 1234,
+    },
+    "strata": {
+        "api_port": 8080,
     },
     "auto_check": {
         "enabled": True,
