@@ -223,12 +223,19 @@ input::selection { background: var(--accent); color: #fff; }
   z-index: 20; pointer-events: none;
 }
 
-/* ── Мобильные (iPhone и др., ≤480px): всё влезает в ширину экрана ────── */
+/* ── Мобильные (iPhone и др., ≤480px): всё влезает в ширину экрана;
+   компактный вертикаль — три блока + нижняя строка на одном экране ──── */
 @media (max-width: 480px) {
-  body { padding: 10px 8px; }
-  .window { min-width: 0; padding: 12px; gap: 8px; }
+  body { padding: 8px 6px; }
+  .window { min-width: 0; padding: 10px; gap: 6px; }
   .dialog { min-width: 0; padding: 14px; }
-  .row { flex-direction: column; }
+  .title { font-size: 16px; }
+  .gear { width: 36px; height: 36px; font-size: 19px; border-radius: 8px; }
+  .block { padding: 10px 12px 12px; gap: 8px; }
+  .section { font-size: 13px; }
+  .card { padding: 6px 10px; gap: 8px; }
+  button { padding: 7px 12px; }
+  .row { flex-direction: column; gap: 8px; }
   .row > button { width: 100%; }
   .rowname { min-width: 0; }
   .form label { flex: 0 0 118px; }
@@ -461,8 +468,10 @@ function setLmTitle(version, model, context, vramMb) {
   $("titleLM").textContent = parts.length ? `LM Studio (${parts.join(", ")})` : "LM Studio";
 }
 
-function setStTitle(model, context, vramMb) {
+function setStTitle(version, model, context, vramMb) {
   const parts = [];
+  const v = (version || "").trim();
+  if (v) parts.push(v);
   const m = (model || "").trim();
   if (m) parts.push(m);
   const ctx = formatContext(context);
@@ -574,7 +583,7 @@ function applyStatus(res) {
     last.st = running;
   }
   $("stateST").textContent = stText(last.st);
-  setStTitle(res.strata_model, res.strata_context, res.strata_vram_mb);
+  setStTitle(res.strata_version, res.strata_model, res.strata_context, res.strata_vram_mb);
   setPcTitle(res.pc_name, res.os_name, res.uptime_s, res.ram_used_mb, res.ram_total_mb);
   last.t = new Date();
   refreshStatusLine();
