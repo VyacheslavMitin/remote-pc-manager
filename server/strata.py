@@ -143,6 +143,26 @@ def health(api_port: int) -> dict | None:
     return body
 
 
+# ---------- версия ----------
+
+def version(exe: str = "") -> str | None:
+    """Версия движка Strata из engine/BUILD.json.
+
+    Манифест лежит рядом с пакетником запуска:
+    <каталог(START-HERE.bat)>/engine/BUILD.json — {"version": "0.1.41",
+    "source": "release", ...} (тот же источник, что читает сам сервер
+    Strata для Monitor-вкладки). Читается и при остановленной Strata.
+    None — BUILD.json нет (движок, собранный из исходников) или битый JSON."""
+    exe = (exe or "").strip() or DEFAULT_LAUNCH_BAT
+    path = os.path.join(os.path.dirname(os.path.abspath(exe)), "engine", "BUILD.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            v = json.load(f).get("version")
+    except (OSError, ValueError):
+        return None
+    return str(v) if v else None
+
+
 # ---------- запуск / остановка ----------
 
 def start(exe: str = "") -> dict:

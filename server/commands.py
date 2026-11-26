@@ -7,6 +7,7 @@
                       "lmstudio_context": "<контекст модели (токены, API /api/v0/models), или null>",
                       "lmstudio_vram_mb": "<VRAM модели — самый крупный процесс на GPU (PowerShell Get-Counter), МБ; null — не запущена / модель не загружена (нет контекста) / нет PowerShell>",
                       "strata_running": bool,
+                      "strata_version": "<версия движка Strata из engine/BUILD.json (рядом с пакетником запуска), или null>",
                       "strata_model": "<id модели Strata (открытый GET /health), или null>",
                       "strata_context": "<max_context модели Strata (токены, /health), или null>",
                       "strata_loaded": bool,
@@ -129,6 +130,7 @@ def run(command: str, cfg: Config, args: dict | None = None) -> dict:
                 system.gpu_process_vram_mb() if (running and context) else None
             ),
             "strata_running": st_running,
+            "strata_version": strata.version(cfg.strata_exe),
             "strata_model": (st_health or {}).get("model"),
             "strata_context": (st_health or {}).get("max_context"),
             "strata_loaded": st_loaded,
