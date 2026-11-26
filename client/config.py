@@ -63,6 +63,15 @@ def load() -> dict:
     return data
 
 
+def merge(base: dict, override: dict) -> dict:
+    """Сливает значения из диалога настроек с уже прочитанным конфигом.
+
+    Поля, о которых диалог не знает (например web_token для веб-версии),
+    сохраняются — иначе их потеря при «Сохранить» ломает веб-доступ.
+    """
+    return _deep_merge(base, override)
+
+
 def save(data: dict) -> None:
     with open(CONFIG_PATH, "w", encoding="utf-8") as fh:
         json.dump(data, fh, ensure_ascii=False, indent=2)

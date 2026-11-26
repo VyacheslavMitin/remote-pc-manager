@@ -882,7 +882,9 @@ class MainWindow(QMainWindow):
     def on_settings(self) -> None:
         dlg = SettingsDialog(self.cfg, self)
         if dlg.exec() == SettingsDialog.Accepted:
-            self.cfg = dlg.values()
+            # НЕ заменяем конфиг целиком: dlg.values() знает только про поля
+            # диалога, а в конфиге есть ещё web_token и пр. — сливаем.
+            self.cfg = config.merge(self.cfg, dlg.values())
             config.save(self.cfg)
             self.lbl_ip.setText(self._ip_text())
             # переприменить настройки автопроверки (включение + интервал)
