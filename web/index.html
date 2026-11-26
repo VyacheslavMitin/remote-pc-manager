@@ -95,7 +95,7 @@ body {
 .gear:hover { background: var(--btn-hov); border-color: var(--border-hi); color: #fff; }
 .gear:active { background: #1e1e22; border-color: var(--border-hi); }
 
-/* ── Блоки «ПК» / «LM Studio» (QFrame#block) ──────────────────────────── */
+/* ── Блоки «ПК» / «LM Studio» / «Strata» (QFrame#block) ───────────────── */
 .block {
   background: var(--block-bg);
   border: 1px solid var(--block-br);
@@ -285,6 +285,21 @@ input::selection { background: var(--accent); color: #fff; }
     </div>
   </div>
 
+  <!-- Блок «Strata» -->
+  <div class="block">
+    <div class="section" id="titleST">Strata</div>
+    <div class="card">
+      <span class="dot" id="dotST" data-tip="не проверено">⚪</span>
+      <span class="rowname" id="stateST">—</span>
+      <span class="spacer"></span>
+      <button id="btnCheckST">Проверить</button>
+    </div>
+    <div class="row">
+      <button class="btn-success grow1" id="btnStartST">▶&nbsp; Включить Strata</button>
+      <button class="btn-danger grow1" id="btnStopST">⏹&nbsp; Выключить Strata</button>
+    </div>
+  </div>
+
   <div style="flex:1;"></div>
 
   <!-- Низ: статус (IP — под заголовком) -->
@@ -305,6 +320,7 @@ input::selection { background: var(--accent); color: #fff; }
       <div class="frow"><label>MAC (Wake-on-LAN)</label><input type="text" id="sMac" spellcheck="false"></div>
       <div class="frow"><label>Порт сервера</label><input type="number" id="sPort" min="1" max="65535"></div>
       <div class="frow"><label>Порт API LM Studio</label><input type="number" id="sLmPort" min="1" max="65535" data-tip="Порт локального API-сервера LM Studio на управляемом ПК. Стандарт — 1234."></div>
+      <div class="frow"><label>Порт API Strata</label><input type="number" id="sStPort" min="1" max="65535" data-tip="Порт локального API-сервера Strata на управляемом ПК (OpenAI-совместимый, как у LM Studio). Стандарт — 8080."></div>
     </div>
     <div class="form">
       <div class="frow"><label></label>
@@ -329,7 +345,8 @@ input::selection { background: var(--accent); color: #fff; }
    Логика повторяет client/app.py:
    - автопроверка каждые N сек (ping ПК + status к серверу);
    - жёлтая точка во время проверки;
-   - заголовки блоков: «ПК (имя, ОС, аптайм)», «LM Studio (v…, модель, контекст)»;
+   - заголовки блоков: «ПК (имя, ОС, аптайм)», «LM Studio (v…, модель, контекст)»,
+     «Strata (модель, контекст, VRAM)»;
    - строка состояния: «Автопроверка: включена, следующая в HH:MM:SS» / «выключена»;
    - команды — реальные fetch в http://<ip>:<порт> (GET /status, POST /command).
    Браузер не умеет ICMP: пинг ПК заменяется HTTP-доступностью сервера
@@ -344,6 +361,7 @@ let cfg = {
   pc:      { ip: "192.168.1.100", mac: "AA:BB:CC:DD:EE:FF" },
   server:  { port: 8787 },
   lmstudio:{ api_port: 1234 },
+  strata:  { api_port: 8080 },
   auto_check: { enabled: true, interval_s: 10 },
 };
 
@@ -351,9 +369,10 @@ let autoEnabled = cfg.auto_check.enabled;
 let autoIntervalS = Math.max(1, cfg.auto_check.interval_s);
 let autoMode = false;              // разрешить авто-строке переписывать статус
 let manualInflight = 0;
-let last = { pc: null, lm: null, modelLoaded: false, t: null };
+let last = { pc: null, lm: null, st: null, modelLoaded: false, t: null };
 function pcText(ok) { return ok === null || ok === undefined ? "—" : (ok ? "в сети" : "не в сети"); }
 function lmText(ok) { return ok === null || ok === undefined ? "—" : (ok ? "работает" : "остановлен"); }
+function stText(ok) { return ok === null || ok === undefined ? "—" : (ok ? "работает" : "остановлен"); }
 let checksRunning = 0;
 function beginCheck() { checksRunning += 1; }
 function endCheck() { checksRunning = Math.max(0, checksRunning - 1); }
@@ -442,6 +461,17 @@ function setLmTitle(version, model, context, vramMb) {
   $("titleLM").textContent = parts.length ? `LM Studio (${parts.join(", ")})` : "LM Studio";
 }
 
+function setStTitle(model, context, vramMb) {
+  const parts = [];
+  const m = (model || "").trim();
+  if (m) parts.push(m);
+  const ctx = formatContext(context);
+  if (ctx) parts.push(ctx);
+  const vr = formatGb(vramMb);
+  if (vr) parts.push(vr);
+  $("titleST").textContent = parts.length ? `Strata (${parts.join(", ")})` : "Strata";
+}
+
 /* ── строка статуса ───────────────────────────────────────────────────── */
 function msg(text) {
   autoMode = false;
@@ -459,9 +489,11 @@ function autoLine() {
 }
 function statusSummary() {
   if (last.pc === false) return "ПК не отвечает.";
-  if (last.lm === false) return "LM Studio не запущен.";
-  if (last.lm === true) return last.modelLoaded ? "ПК в сети, LM Studio работает, модель загружена." : "ПК в сети, LM Studio работает.";
-  return last.pc === true ? "ПК в сети." : "—";
+  if (last.pc !== true) return "—";
+  if (last.lm === true && last.st === true) return "ПК в сети, активны обе: LM Studio и Strata.";
+  if (last.lm === true) return "ПК в сети, активна LM Studio.";
+  if (last.st === true) return "ПК в сети, активна Strata.";
+  return "ПК в сети, ничего не активно.";
 }
 function refreshStatusLine() {
   if (!autoMode) return;
@@ -534,6 +566,15 @@ function applyStatus(res) {
   last.modelLoaded = (res.lmstudio_context || 0) > 0;
   $("stateLM").textContent = lmText(last.lm);
   setLmTitle(res.lmstudio_version, res.lmstudio_model, res.lmstudio_context, res.lmstudio_vram_mb);
+  // Strata: сервер отдаёт strata_running / strata_model / strata_context /
+  // strata_loaded / strata_vram_mb (старый сервер — полей нет, блок не падает)
+  if ("strata_running" in res) {
+    const running = !!res.strata_running;
+    setDot($("dotST"), running, running ? "работает" : "не запущена");
+    last.st = running;
+  }
+  $("stateST").textContent = stText(last.st);
+  setStTitle(res.strata_model, res.strata_context, res.strata_vram_mb);
   setPcTitle(res.pc_name, res.os_name, res.uptime_s, res.ram_used_mb, res.ram_total_mb);
   last.t = new Date();
   refreshStatusLine();
@@ -545,6 +586,10 @@ function applyStatusDown(msg) {
   last.modelLoaded = false;
   $("stateLM").textContent = "—";
   setLmTitle(null);
+  setDot($("dotST"), null, "сервер недоступен");
+  last.st = null;
+  $("stateST").textContent = "—";
+  setStTitle(null);
   setPcTitle(null);
   last.t = new Date();
   refreshStatusLine();
@@ -566,13 +611,21 @@ async function autoTick() {
   autoMode = true;
   setChecking($("dotPC"), $("statePC"));
   setChecking($("dotLM"), $("stateLM"));
+  setChecking($("dotST"), $("stateST"));
 
+  let statusOk = false;
   const pcP = pingPC()
     .then(res => applyPC(!!res, res ? "в сети" : "не отвечает на ping"))
-    .catch(e => applyPC(false, `ошибка: ${e.message}`));
+    .catch(e => { if (!statusOk) applyPC(false, `ошибка: ${e.message}`); });
 
   const lmP = apiStatus()
-    .then(applyStatus)
+    .then(res => {
+      // раз сервер ответил на status — ПК точно в сети (status бывает медленным,
+      // и pingPC может не успеть в свой таймаут; не противоречим себе)
+      statusOk = true;
+      applyPC(true, "в сети");
+      applyStatus(res);
+    })
     .catch(e => applyStatusDown(e.message));
 
   await Promise.allSettled([pcP, lmP]);
@@ -702,12 +755,68 @@ async function onStopLM() {
   finishManual();
 }
 
+async function checkStQuiet() {
+  setChecking($("dotST"), $("stateST"));
+  try {
+    const res = await apiStatus();
+    applyStatus(res);
+  } catch (e) {
+    applyStatusDown(e.message);
+  }
+}
+
+async function onCheckST() {
+  $("btnCheckST").disabled = true;
+  beginManual();
+  setChecking($("dotST"), $("stateST"));
+  msg("Проверяю состояние Strata …");
+  try {
+    const res = await apiStatus();
+    applyStatus(res);
+    const running = !!res.strata_running;
+    msg(`Strata: ${running ? "🟢 работает" : "🔴 не запущена"}`);
+  } catch (e) {
+    applyStatusDown(e.message);
+    msg(`Strata: не проверено — ${e.message}`);
+  }
+  finishManual($("btnCheckST"));
+}
+
+async function onStartST() {
+  beginManual();
+  msg("Отправляю команду: запустить Strata …");
+  try {
+    const res = await apiCommand("start_strata");
+    const extra = res.pid ? ` (PID ${res.pid})` : (res.bat ? ` (${res.bat})` : "");
+    msg(`✅ Strata: запуск${extra}.`);
+    checkStQuiet();
+  } catch (e) {
+    msg(`❌ Не удалось запустить Strata: ${e.message}`);
+  }
+  finishManual();
+}
+
+async function onStopST() {
+  beginManual();
+  msg("Отправляю команду: остановить Strata …");
+  try {
+    const res = await apiCommand("stop_strata");
+    const note = res.note;
+    msg(note ? `✅ Strata: ${note}.` : "✅ Strata: остановлена.");
+    checkStQuiet();
+  } catch (e) {
+    msg(`❌ Не удалось остановить Strata: ${e.message}`);
+  }
+  finishManual();
+}
+
 /* ── настройки (аналог SettingsDialog) ───────────────────────────────── */
 function openSettings() {
   $("sIp").value = cfg.pc.ip;
   $("sMac").value = cfg.pc.mac;
   $("sPort").value = cfg.server.port;
   $("sLmPort").value = cfg.lmstudio ? cfg.lmstudio.api_port : 1234;
+  $("sStPort").value = cfg.strata ? cfg.strata.api_port : 8080;
   $("sAuto").checked = autoEnabled;
   $("sInterval").value = autoIntervalS;
   $("overlay").classList.add("open");
@@ -729,13 +838,16 @@ function saveSettings() {
   catch (e) { alert(e.message); return; }
   const port = parseInt($("sPort").value, 10);
   const lmPort = parseInt($("sLmPort").value, 10);
+  const stPort = parseInt($("sStPort").value, 10);
   if (!(port >= 1 && port <= 65535)) { alert("Порт сервера: 1–65535."); return; }
   if (!(lmPort >= 1 && lmPort <= 65535)) { alert("Порт API LM Studio: 1–65535."); return; }
+  if (!(stPort >= 1 && stPort <= 65535)) { alert("Порт API Strata: 1–65535."); return; }
 
   cfg = {
     pc: { ip, mac: macNorm },
     server: { port },
     lmstudio: { api_port: lmPort },
+    strata: { api_port: stPort },
     auto_check: { enabled: $("sAuto").checked, interval_s: Math.max(1, parseInt($("sInterval").value, 10) || 10) },
   };
   autoEnabled = cfg.auto_check.enabled;
@@ -755,15 +867,22 @@ function saveSettings() {
   apiCommand("set_lm_port", { port: lmPort }, 6000)
     .then(res => msg(`⚙ Порт LM Studio применён на сервере: ${res.lmstudio_api_port || lmPort}.`))
     .catch(e => msg(`⚙ Порт LM Studio сохранён локально (${lmPort}), но применить на сервере не удалось: ${e.message}.`));
+  // порт Strata на сервер (как _push_strata_port в app.py)
+  apiCommand("set_strata_port", { port: stPort }, 6000)
+    .then(res => msg(`⚙ Порт Strata применён на сервере: ${res.strata_api_port || stPort}.`))
+    .catch(e => msg(`⚙ Порт Strata сохранён локально (${stPort}), но применить на сервере не удалось: ${e.message}.`));
 }
 
 /* ── привязка событий ────────────────────────────────────────────────── */
 $("btnCheckPC").onclick = onCheckPC;
 $("btnCheckLM").onclick = onCheckLM;
+$("btnCheckST").onclick = onCheckST;
 $("btnWol").onclick = onWol;
 $("btnHib").onclick = onHibernate;
 $("btnStartLM").onclick = onStartLM;
 $("btnStopLM").onclick = onStopLM;
+$("btnStartST").onclick = onStartST;
+$("btnStopST").onclick = onStopST;
 $("btnSettings").onclick = openSettings;
 $("btnCancel").onclick = closeSettings;
 $("btnSave").onclick = saveSettings;
@@ -780,6 +899,7 @@ function applyCfg(c) {
   if (c.pc && c.pc.mac) cfg.pc.mac = String(c.pc.mac);
   if (c.server && c.server.port) cfg.server.port = parseInt(c.server.port, 10);
   if (c.lmstudio && c.lmstudio.api_port) cfg.lmstudio.api_port = parseInt(c.lmstudio.api_port, 10);
+  if (c.strata && c.strata.api_port) { cfg.strata = cfg.strata || { api_port: 8080 }; cfg.strata.api_port = parseInt(c.strata.api_port, 10); }
   autoEnabled = !!(c.auto_check && c.auto_check.enabled);
   autoIntervalS = Math.max(1, parseInt((c.auto_check && c.auto_check.interval_s) || 10, 10));
   cfg.auto_check = { enabled: autoEnabled, interval_s: autoIntervalS };
