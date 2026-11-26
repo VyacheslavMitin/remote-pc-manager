@@ -2,7 +2,8 @@
 
 Эндпоинты:
     POST /command   тело {"command": "status"|"hibernate"|
-                        "start_lmstudio"|"stop_lmstudio"|"set_lm_port",
+                        "start_lmstudio"|"stop_lmstudio"|"set_lm_port"|
+                        "start_strata"|"stop_strata"|"set_strata_port",
                         ...доп. поля, напр. "port"}
     GET  /status    то же, что команда "status" (удобно для проверки из браузера)
     GET  /          {"ok": true, "service": "rpcm-server"}

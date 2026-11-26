@@ -6,6 +6,10 @@
     "process_name": "LM Studio.exe",
     "api_port": 1234
   },
+  "strata": {
+    "exe": "C:\\AI\\Strata\\strata-main\\START-HERE.bat",
+    "api_port": 8080
+  },
   "hibernate": {
     "method": "rundll32",
     "delay_s": 1.0

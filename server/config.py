@@ -26,6 +26,14 @@ DEFAULTS = {
         # Порт локального API-сервера LM Studio (загруженные модели, /v1/models).
         "api_port": 1234,
     },
+    "strata": {
+        # Путь к пакетнику запуска Strata (START-HERE.bat). Пусто —
+        # стандарт C:\AI\Strata\strata-main\START-HERE.bat.
+        "exe": "",
+        # Порт локального API-сервера Strata (OpenAI-совместимый, как у
+        # LM Studio; состояние читаем из открытого /health). Стандарт — 8080.
+        "api_port": 8080,
+    },
     "hibernate": {
         # "rundll32" -> rundll32.exe powrprof.dll,SetSuspendState 0,1,0
         # "shutdown" -> shutdown /h /f
@@ -78,6 +86,16 @@ class Config:
     def lm_api_port(self) -> int:
         """Порт локального API-сервера LM Studio (загруженные модели)."""
         return int(self.data["lmstudio"].get("api_port", 1234))
+
+    # --- Strata ---
+    @property
+    def strata_exe(self) -> str:
+        return str(self.data.get("strata", {}).get("exe", "") or "").strip()
+
+    @property
+    def strata_api_port(self) -> int:
+        """Порт локального API-сервера Strata (открытый /health)."""
+        return int(self.data.get("strata", {}).get("api_port", 8080))
 
     # --- гибернация ---
     @property

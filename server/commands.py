@@ -6,6 +6,11 @@
                       "lmstudio_model": "<id загруженной модели (API, /v1/models), или null>",
                       "lmstudio_context": "<контекст модели (токены, API /api/v0/models), или null>",
                       "lmstudio_vram_mb": "<VRAM модели — самый крупный процесс на GPU (PowerShell Get-Counter), МБ; null — не запущена / модель не загружена (нет контекста) / нет PowerShell>",
+                      "strata_running": bool,
+                      "strata_model": "<id модели Strata (открытый GET /health), или null>",
+                      "strata_context": "<max_context модели Strata (токены, /health), или null>",
+                      "strata_loaded": bool,
+                      "strata_vram_mb": "<VRAM — самый крупный процесс на GPU, МБ; null — Strata не запущена / модель не загружена / нет PowerShell. ВНИМАНИЕ: когда LM Studio и Strata загружены одновременно, это память крупнейшей из двух моделей — блок Strata может показать VRAM LM Studio (и наоборот)>",
                       "ram_used_mb": "<занято RAM, МБ; null — не удалось прочитать>",
                       "ram_total_mb": "<всего RAM, МБ; null — не удалось прочитать>",
                       "pc_name": "<имя ПК (hostname)>",
@@ -18,6 +23,12 @@
     set_lm_port     тело {"command": "set_lm_port", "port": 1234}
                     -> {"ok": true, "command": "set_lm_port", "lmstudio_api_port": 1234}
                        (задаёт lmstudio.api_port и сохраняет его в config.json)
+    start_strata    -> {"ok": true, "pid": int, "bat": "<путь>", ...}
+    stop_strata     -> {"ok": true, "killed": [pid, ...]|None,
+                        "note": "остановлена аккуратно|принудительно|не был запущен"}
+    set_strata_port тело {"command": "set_strata_port", "port": 8080}
+                    -> {"ok": true, "command": "set_strata_port", "strata_api_port": 8080}
+                       (задаёт strata.api_port и сохраняет его в config.json)
     vram_debug      -> {"ok": true, "command": "vram_debug",
                         "compute_apps": {rc, stdout, stderr},
                         "gpu": {rc, stdout, stderr},
@@ -35,10 +46,12 @@ import time
 
 import hibernate
 import lmstudio
+import strata
 import system
 from config import Config, save as save_config
 
-SUPPORTED = ("status", "hibernate", "start_lmstudio", "stop_lmstudio", "set_lm_port", "vram_debug")
+SUPPORTED = ("status", "hibernate", "start_lmstudio", "stop_lmstudio", "set_lm_port",
+             "start_strata", "stop_strata", "set_strata_port", "vram_debug")
 
 
 def _os_name() -> str:
@@ -91,6 +104,13 @@ def run(command: str, cfg: Config, args: dict | None = None) -> dict:
         running = lmstudio.is_running(cfg.lm_process)
         model = lmstudio.loaded_model(cfg.lm_api_port)
         context = lmstudio.loaded_context(cfg.lm_api_port)
+        # Strata: /health открыт и отвечает за миллисекунды — если он
+        # ответил, процесс искать не нужно (WMI ~1-2 с экономим всегда,
+        # когда Strata жива). Если /health молчит (порт не совпал /
+        # загружается) — проверяем наличие процесса.
+        st_health = strata.health(cfg.strata_api_port)
+        st_running = st_health is not None or bool(strata.find_pids())
+        st_loaded = bool((st_health or {}).get("loaded"))
         mem = system.memory_info() or {}
         return {
             "ok": True,
@@ -107,6 +127,15 @@ def run(command: str, cfg: Config, args: dict | None = None) -> dict:
             # попала бы память чужого приложения.
             "lmstudio_vram_mb": (
                 system.gpu_process_vram_mb() if (running and context) else None
+            ),
+            "strata_running": st_running,
+            "strata_model": (st_health or {}).get("model"),
+            "strata_context": (st_health or {}).get("max_context"),
+            "strata_loaded": st_loaded,
+            # VRAM — как у LM Studio: крупнейший процесс на GPU; только
+            # когда Strata запущена и её модель реально загружена.
+            "strata_vram_mb": (
+                system.gpu_process_vram_mb() if (st_running and st_loaded) else None
             ),
             "ram_used_mb": mem.get("used_mb"),
             "ram_total_mb": mem.get("total_mb"),
@@ -128,6 +157,14 @@ def run(command: str, cfg: Config, args: dict | None = None) -> dict:
         info = lmstudio.stop(cfg.lm_process)
         return {"ok": True, "command": "stop_lmstudio", **info}
 
+    if c == "start_strata":
+        info = strata.start(cfg.strata_exe)
+        return {"ok": True, "command": "start_strata", **info}
+
+    if c == "stop_strata":
+        info = strata.stop()
+        return {"ok": True, "command": "stop_strata", **info}
+
     if c == "vram_debug":
         # Отладка: сырые выходы nvidia-smi + разбор строк по names.
         return {
@@ -147,6 +184,18 @@ def run(command: str, cfg: Config, args: dict | None = None) -> dict:
         cfg.data.setdefault("lmstudio", {})["api_port"] = port
         save_config(cfg)
         return {"ok": True, "command": "set_lm_port", "lmstudio_api_port": port}
+
+    if c == "set_strata_port":
+        raw = (args or {}).get("port")
+        try:
+            port = int(str(raw).strip())
+        except (TypeError, ValueError):
+            raise ValueError(f"set_strata_port: порт должен быть числом, а не {raw!r}")
+        if not (1 <= port <= 65535):
+            raise ValueError(f"set_strata_port: порт вне диапазона 1–65535: {raw!r}")
+        cfg.data.setdefault("strata", {})["api_port"] = port
+        save_config(cfg)
+        return {"ok": True, "command": "set_strata_port", "strata_api_port": port}
 
     # недостижимо
     raise ValueError(f"неизвестная команда {command!r}")
