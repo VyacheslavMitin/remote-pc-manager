@@ -463,19 +463,24 @@ class MainWindow(QMainWindow):
 
     def _set_strata_title(
         self,
+        version: str | None = None,
         model: str | None = None,
         context: int | None = None,
         vram_mb: int | None = None,
     ) -> None:
-        """Заголовок блока «Strata» — модель, её контекст и VRAM:
+        """Заголовок блока «Strata» — версия движка, модель, контекст и VRAM:
 
-        «Strata (qwen3.8-flash-next-iq3_s, 128K, 14 ГБ)», если сервер
-        прислал strata_model / strata_context / strata_vram_mb (из
+        «Strata (0.1.41, qwen3.8-flash-next-iq3_s, 128K, 28 ГБ)», если сервер
+        прислал strata_version / strata_model / strata_context /
+        strata_vram_mb (версия — из engine/BUILD.json на ПК, остальное — из
         открытого /health Strata; контекст 131072 -> «128K», VRAM — целые
         ГБ). Только то, что прислал; если ничего неизвестно (старый сервер
         или сервер недоступен) — просто «Strata»; состояние показывает
         индикатор-точка."""
         parts: list[str] = []
+        v = (version or "").strip()
+        if v:
+            parts.append(v)
         m = (model or "").strip()
         if m:
             parts.append(m)
@@ -573,8 +578,8 @@ class MainWindow(QMainWindow):
             self._last["strata"] = st_running
         self._last["strata_loaded"] = bool(res.get("strata_loaded"))
         self._set_strata_title(
-            res.get("strata_model"), res.get("strata_context"),
-            res.get("strata_vram_mb"))
+            res.get("strata_version"), res.get("strata_model"),
+            res.get("strata_context"), res.get("strata_vram_mb"))
         self._set_pc_title(
             res.get("pc_name"), res.get("os_name"), res.get("uptime_s"),
             res.get("ram_used_mb"), res.get("ram_total_mb")
@@ -693,8 +698,8 @@ class MainWindow(QMainWindow):
                 self.row_st.set_state(st_running, "запущена" if st_running else "не запущена")
                 self._last["strata"] = st_running
             self._set_strata_title(
-                res.get("strata_model"), res.get("strata_context"),
-                res.get("strata_vram_mb"))
+                res.get("strata_version"), res.get("strata_model"),
+                res.get("strata_context"), res.get("strata_vram_mb"))
             self._set_pc_title(
                 res.get("pc_name"), res.get("os_name"), res.get("uptime_s"),
                 res.get("ram_used_mb"), res.get("ram_total_mb")
@@ -787,8 +792,8 @@ class MainWindow(QMainWindow):
             self._last["strata"] = running
             self._last["strata_loaded"] = bool(res.get("strata_loaded"))
             self._set_strata_title(
-                res.get("strata_model"), res.get("strata_context"),
-                res.get("strata_vram_mb"))
+                res.get("strata_version"), res.get("strata_model"),
+                res.get("strata_context"), res.get("strata_vram_mb"))
             self._set_pc_title(
                 res.get("pc_name"), res.get("os_name"), res.get("uptime_s"),
                 res.get("ram_used_mb"), res.get("ram_total_mb")
@@ -849,8 +854,8 @@ class MainWindow(QMainWindow):
             self._last["strata"] = bool(res.get("strata_running"))
             self._last["strata_loaded"] = bool(res.get("strata_loaded"))
             self._set_strata_title(
-                res.get("strata_model"), res.get("strata_context"),
-                res.get("strata_vram_mb"))
+                res.get("strata_version"), res.get("strata_model"),
+                res.get("strata_context"), res.get("strata_vram_mb"))
             self._set_pc_title(
                 res.get("pc_name"), res.get("os_name"), res.get("uptime_s"),
                 res.get("ram_used_mb"), res.get("ram_total_mb")
@@ -883,8 +888,10 @@ class MainWindow(QMainWindow):
         dlg = SettingsDialog(self.cfg, self)
         if dlg.exec() == SettingsDialog.Accepted:
             # НЕ заменяем конфиг целиком: dlg.values() знает только про поля
-            # диалога, а в конфиге есть ещё web_token и пр. — сливаем.
-            self.cfg = config.merge(self.cfg, dlg.values())
+            # диалога, а в конфиге есть ещё web_token и пр. — сливаем со
+            # СВЕЖИМ состоянием с диска (не с self.cfg: процесс мог быть
+            # запущен до внешней правки конфига и затереть её).
+            self.cfg = config.merge(config.load(), dlg.values())
             config.save(self.cfg)
             self.lbl_ip.setText(self._ip_text())
             # переприменить настройки автопроверки (включение + интервал)
