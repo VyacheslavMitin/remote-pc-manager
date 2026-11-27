@@ -107,7 +107,7 @@ struct WatchRootView: View {
         } label: {
             Text(symbol)
                 .font(.system(size: 13))
-                .frame(maxWidth: .infinity, minHeight: 16)
+                .frame(maxWidth: .infinity, minHeight: 32)
         }
         .buttonStyle(.borderedProminent)
         .tint(tint)
