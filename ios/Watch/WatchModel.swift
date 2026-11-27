@@ -20,6 +20,22 @@ final class WatchModel: ObservableObject {
     /// false — часы не видят локальную сеть; nil — ПК жив или не измерялось.
     @Published var lanOK: Bool? = nil
     @Published var lastCheck: Date?
+    /// Лента событий (команды и смены статусов), newest last; на экране —
+    /// последние несколько внизу.
+    @Published var events: [WatchEvent] = []
+
+    struct WatchEvent: Identifiable {
+        let id = UUID()
+        let time: Date
+        let text: String
+        /// nil = информационное, true = успешно, false = ошибка
+        let ok: Bool?
+    }
+
+    private func log(_ text: String, ok: Bool? = nil) {
+        events.append(WatchEvent(time: Date(), text: text, ok: ok))
+        if events.count > 20 { events.removeFirst(events.count - 20) }
+    }
 
     private var autoTask: Task<Void, Never>?
 
@@ -33,9 +49,16 @@ final class WatchModel: ObservableObject {
         async let st = Self.httpUp("http://\(WatchConfig.pcHost):\(WatchConfig.strataPort)/health")
 
         let up = await pc
+        let lmNew = await lm
+        let stNew = await st
+        let oldPC = pcUp, oldLM = lmUp, oldST = strataUp
         pcUp = up
-        lmUp = await lm
-        strataUp = await st
+        lmUp = lmNew
+        strataUp = stNew
+        // Смены статусов — в ленту событий (первая проверка nil→нет не пишется).
+        if let o = oldPC, o != up { log("ПК " + (up ? "в сети" : "не в сети"), ok: up) }
+        if let o = oldLM, o != lmNew { log("LM Studio " + (lmNew ? "запущена" : "остановлена"), ok: lmNew) }
+        if let o = oldST, o != stNew { log("Strata " + (stNew ? "запущена" : "остановлена"), ok: stNew) }
         // ПК «не в сети» — проверяем, видит ли часы локальную сеть вообще.
         lanOK = up ? nil : await Self.httpUp("http://\(WatchConfig.nasHost):\(WatchConfig.nasPort)/")
     }
@@ -57,19 +80,32 @@ final class WatchModel: ObservableObject {
 
     // MARK: - Команды
 
+    /// Человекочитаемые имена команд — для ленты событий.
+    private static let cmdLabels = [
+        "hibernate": "Гибернация ПК",
+        "start_lmstudio": "Запуск LM Studio",
+        "stop_lmstudio": "Остановка LM Studio",
+        "start_strata": "Запуск Strata",
+        "stop_strata": "Остановка Strata",
+    ]
+
     /// Команда серверу ПК (POST /command). true — сервер принял (ok:true).
     @discardableResult
     func sendCommand(_ command: String) async -> Bool {
-        await postJSON("http://\(WatchConfig.pcHost):\(WatchConfig.pcPort)/command",
-                       body: ["command": command], headers: [:])
+        let ok = await postJSON("http://\(WatchConfig.pcHost):\(WatchConfig.pcPort)/command",
+                                body: ["command": command], headers: [:])
+        log(Self.cmdLabels[command] ?? command, ok: ok)
+        return ok
     }
 
     /// Пробуждение ПК (Wake-on-LAN) через NAS-релей: POST /wol + X-Token,
     /// MAC релея берёт из своего config — на часах MAC не нужен.
     @discardableResult
     func wakePC() async -> Bool {
-        await postJSON("http://\(WatchConfig.nasHost):\(WatchConfig.nasPort)/wol",
-                       body: [:], headers: ["X-Token": WatchConfig.relayToken])
+        let ok = await postJSON("http://\(WatchConfig.nasHost):\(WatchConfig.nasPort)/wol",
+                                body: [:], headers: ["X-Token": WatchConfig.relayToken])
+        log("Пробуждение ПК (WoL)", ok: ok)
+        return ok
     }
 
     /// POST JSON, ответ — JSON с полем ok. true = ok:true.
