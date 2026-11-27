@@ -150,7 +150,7 @@ final class AppModel: ObservableObject {
                 let (sent, _, rmac) = try await WoLRelay.send(relayURL: relayURL,
                                                                token: cfg.wolRelayToken,
                                                                mac: mac)
-                statusLine = "✅ WoL: ×\(sent) → MAC \(rmac)"
+                statusLine = "✅ WoL (relay): ×\(sent) → MAC \(rmac)"
             } catch {
                 do {
                     let (sent, _, _) = try WoL.send(macRaw: mac, unicastIP: cfg.pcIP)
@@ -164,7 +164,7 @@ final class AppModel: ObservableObject {
 
         do {
             let (sent, _, dmac) = try WoL.send(macRaw: mac, unicastIP: cfg.pcIP)
-            statusLine = "✅ WoL: ×\(sent) → MAC \(dmac)"
+            statusLine = "✅ WoL (напрямую): ×\(sent) → MAC \(dmac)"
         } catch {
             statusLine = "❌ WoL: \(error.localizedDescription)"
         }
