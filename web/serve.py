@@ -17,6 +17,9 @@
     - токен задан  : страницы/конфиг/WoL — только с токеном (cookie,
                      заголовок X-Token или ?token=...); вход — POST /login;
     - токен пустой : защита выключена (локальный режим, как раньше).
+    client/config.json → "wol_token": "<секрет>" (необязательно)
+    - дополнительный токен, который принимается ТОЛЬКО на POST /wol
+      (для часов: утечка будит ПК, но не даёт доступ к странице/командам).
 
 Запуск:
     python3 web/serve.py [--port 8080] [--host 0.0.0.0]
@@ -69,7 +72,13 @@ def web_token() -> str:
     return str(_load_config().get("web_token") or "").strip()
 
 
+def wol_token() -> str:
+    """Токен только для POST /wol (client/config.json → wol_token, пусто = не принимается)."""
+    return str(_load_config().get("wol_token") or "").strip()
+
+
 TOKEN = web_token()
+WOL_TOKEN = wol_token()
 COOKIE = "rpcm_token"
 
 LOGIN_PAGE = """<!doctype html>
@@ -162,6 +171,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         t = self._token_from_request()
         return bool(t) and secrets.compare_digest(t, TOKEN)
 
+    def _wol_authed(self) -> bool:
+        """Отдельный wol_token принимается только здесь (POST /wol)."""
+        if not WOL_TOKEN:
+            return False
+        t = self._token_from_request()
+        return bool(t) and secrets.compare_digest(t, WOL_TOKEN)
+
     def _require_auth(self) -> bool:
         """True — запрос пропущен. False — уже ответили (401/302/страница)."""
         if self._authed():
@@ -215,7 +231,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if path != "/wol":
             self._json(404, {"ok": False, "error": f"неизвестный эндпоинт: {self.path}"})
             return
-        if not self._require_auth():
+        if not self._authed() and not self._wol_authed():
+            self._json(401, {"ok": False, "error": "нужен токен"})
             return
 
         length = int(self.headers.get("Content-Length") or 0)
