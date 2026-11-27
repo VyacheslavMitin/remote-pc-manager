@@ -40,6 +40,9 @@ VRAM: «Strata (qwen3.8-flash-next-iq3_s, 128K, 14 ГБ)», если серве�
 командой set_strata_port.
 Нижняя сводка сообщает, что активно: «активна LM Studio», «активна Strata»
 или «активны обе: LM Studio и Strata».
+Опция «Держать окно поверх остальных окон» (⚙ Настройки → Окно,
+window.always_on_top): окно не перекрывается другими приложениями,
+применяется при старте и сразу после сохранения настроек.
 """
 from __future__ import annotations
 
@@ -220,6 +223,10 @@ class MainWindow(QMainWindow):
         self._last: dict[str, object] = {"pc": None, "lm": None, "t": None, "model": None,
                                          "strata": None, "strata_loaded": False}
 
+        # окно: держать поверх остальных окон (window.always_on_top, настройка)
+        self._on_top = bool(self.cfg.get("window", {}).get("always_on_top", False))
+        self.setWindowFlag(Qt.WindowStaysOnTopHint, self._on_top)
+
         self.setWindowTitle("Удалённый ПК — менеджер")
         self.setMinimumSize(440, 470)
 
@@ -340,6 +347,21 @@ class MainWindow(QMainWindow):
             self._auto_tick()
 
     # ---------- инфраструктура ----------
+    def _apply_on_top(self) -> None:
+        """Применяет режим «поверх остальных окон» (window.always_on_top).
+
+        Смена флага WindowStaysOnTopHint в Qt скрывает окно — если оно было
+        видно, показываем заново (иначе после сохранения настроек окно
+        исчезнет)."""
+        want = bool(self.cfg.get("window", {}).get("always_on_top", False))
+        if want == self._on_top:
+            return
+        was_visible = self.isVisible()
+        self.setWindowFlag(Qt.WindowStaysOnTopHint, want)
+        self._on_top = want
+        if was_visible:
+            self.show()
+
     def _run(self, fn, ok=None, fail=None, on_finish=None) -> Worker:
         """Выполняет fn в фоновом потоке; ok(res)/fail(msg)/on_finish() — колбэки."""
         def _on_ok(res):
@@ -894,6 +916,8 @@ class MainWindow(QMainWindow):
             self.cfg = config.merge(config.load(), dlg.values())
             config.save(self.cfg)
             self.lbl_ip.setText(self._ip_text())
+            # режим «поверх остальных окон» применяется сразу
+            self._apply_on_top()
             # переприменить настройки автопроверки (включение + интервал)
             ac = self.cfg.get("auto_check", {})
             self._auto_enabled = bool(ac.get("enabled", True))

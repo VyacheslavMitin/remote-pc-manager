@@ -16,5 +16,8 @@
     "enabled": true,
     "interval_s": 10
   },
+  "window": {
+    "always_on_top": false
+  },
   "web_token": ""
 }

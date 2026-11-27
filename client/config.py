@@ -10,6 +10,7 @@
                         (OpenAI-совместимый, как у LM Studio; стандарт — 8080)
     auto_check.enabled    — автопроверка состояния: вкл/выкл
     auto_check.interval_s — интервал автопроверки, в секундах
+    window.always_on_top  — держать окно клиента поверх остальных окон
 """
 from __future__ import annotations
 
@@ -36,6 +37,9 @@ DEFAULTS = {
     "auto_check": {
         "enabled": True,
         "interval_s": 10,
+    },
+    "window": {
+        "always_on_top": False,
     },
 }
 

@@ -1,5 +1,5 @@
 """Диалог настроек клиента: IP, MAC, порты (сервер + API LM Studio + API
-Strata), автопроверка."""
+Strata), автопроверка, окно (поверх остальных окон)."""
 from __future__ import annotations
 
 from PySide6.QtWidgets import (
@@ -80,6 +80,20 @@ class SettingsDialog(QDialog):
         auto_form.addRow("Интервал проверки", self.auto_interval)
         layout.addLayout(auto_form)
 
+        # --- Окно ---
+        win = cfg.get("window", {})
+        self.on_top = QCheckBox("Держать окно поверх остальных окон")
+        self.on_top.setChecked(bool(win.get("always_on_top", False)))
+        self.on_top.setToolTip(
+            "Окно менеджера не перекрывается другими приложениями. "
+            "Применяется сразу после сохранения."
+        )
+
+        win_form = QFormLayout()
+        win_form.setSpacing(10)
+        win_form.addRow("", self.on_top)
+        layout.addLayout(win_form)
+
         hint = QPushButton("ℹ  Как узнать IP и MAC?")
         hint.setFlat(True)
         hint.setStyleSheet("text-align:left; color:#8ab4ff;")
@@ -132,6 +146,7 @@ class SettingsDialog(QDialog):
                 "enabled": self.auto_enabled.isChecked(),
                 "interval_s": self.auto_interval.value(),
             },
+            "window": {"always_on_top": self.on_top.isChecked()},
         }
 
     def _warn(self, msg: str) -> None:
