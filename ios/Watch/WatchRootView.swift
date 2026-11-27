@@ -127,7 +127,7 @@ struct WatchRootView: View {
             }
         } label: {
             Text(symbol)
-                .font(.system(size: 13))
+                .font(.system(size: 26))
                 .frame(maxWidth: .infinity, minHeight: 40)
         }
         .buttonStyle(.borderedProminent)
@@ -227,7 +227,7 @@ struct WatchRootView: View {
 
     static let timeFmtShort: DateFormatter = {
         let f = DateFormatter()
-        f.dateFormat = "HH:mm"
+        f.dateFormat = "HH:mm:ss"
         return f
     }()
 
@@ -243,7 +243,7 @@ struct WatchRootView: View {
                 .fill(dot)
                 .frame(width: 6, height: 6)
             Text(title)
-                .font(.system(size: 10, weight: .medium))
+                .font(.system(size: 11, weight: .medium))
                 .foregroundColor(Theme.text)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
