@@ -1,11 +1,13 @@
 import Foundation
 import Combine
 
-/// Модель watch-клиента: ТОЛЬКО статусы, команд нет (кнопок на часах нет).
-/// Всё захардкожено в WatchConfig; проверки независимые, каждая напрямую:
+/// Модель watch-клиента: статусы + команды. Всё захардкожено в WatchConfig;
+/// проверки независимые, каждая напрямую:
 ///   ПК        — GET :8787/ (сервер ответил = ПК включён)
 ///   LM Studio — GET :4321/v1/models
 ///   Strata    — GET :8090/health
+/// Команды — POST :8787/command (hibernate, start/stop_lmstudio,
+/// start/stop_strata); пробуждение — POST /wol на NAS-релей (ПК выключен).
 /// При «ПК не в сети» часы проверяют, видят ли они LAN вообще (GET на NAS):
 /// NAS отвечает → молчит ПК; NAS молчит → LAN заблокирован: на watchOS нет
 /// локальной network-privacy (TN3179), при connected iPhone трафик идёт через
@@ -48,6 +50,42 @@ final class WatchModel: ObservableObject {
         do {
             _ = try await URLSession.shared.data(for: req)
             return true
+        } catch {
+            return false
+        }
+    }
+
+    // MARK: - Команды
+
+    /// Команда серверу ПК (POST /command). true — сервер принял (ok:true).
+    @discardableResult
+    func sendCommand(_ command: String) async -> Bool {
+        await postJSON("http://\(WatchConfig.pcHost):\(WatchConfig.pcPort)/command",
+                       body: ["command": command], headers: [:])
+    }
+
+    /// Пробуждение ПК (Wake-on-LAN) через NAS-релей: POST /wol + X-Token,
+    /// MAC релея берёт из своего config — на часах MAC не нужен.
+    @discardableResult
+    func wakePC() async -> Bool {
+        await postJSON("http://\(WatchConfig.nasHost):\(WatchConfig.nasPort)/wol",
+                       body: [:], headers: ["X-Token": WatchConfig.relayToken])
+    }
+
+    /// POST JSON, ответ — JSON с полем ok. true = ok:true.
+    private func postJSON(_ url: String, body: [String: Any],
+                          headers: [String: String]) async -> Bool {
+        guard let u = URL(string: url) else { return false }
+        var req = URLRequest(url: u)
+        req.httpMethod = "POST"
+        req.timeoutInterval = 6
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        for (k, v) in headers { req.setValue(v, forHTTPHeaderField: k) }
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        do {
+            let (data, _) = try await URLSession.shared.data(for: req)
+            let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+            return (obj?["ok"] as? Bool) ?? false
         } catch {
             return false
         }

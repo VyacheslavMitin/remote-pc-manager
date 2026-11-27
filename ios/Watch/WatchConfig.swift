@@ -10,10 +10,13 @@ enum WatchConfig {
     static let lmPort = 4321
     /// Strata на ПК (llama.cpp-совместимый сервер, GET /health без ключа).
     static let strataPort = 8090
-    /// NAS с веб-релеем — используется ТОЛЬКО для диагностики «видят ли часы
-    /// локальную сеть» (любой HTTP-ответ = путь есть).
+    /// NAS с веб-релеем — диагностика «видят ли часы локальную сеть» и
+    /// пробуждение ПК (POST /wol: выключенный ПК не достать, magic packet
+    /// шлёт всегда включённый NAS).
     static let nasHost = "192.168.1.40"
     static let nasPort = 8090
+    /// Токен WoL (wol_token в client/config.json на NAS: принимается только на POST /wol).
+    static let relayToken = "6a686e46e75f09cc50304c7a028339273aa99919048a587d"
 
     /// Интервал автопроверки статуса, с.
     static let autoCheckIntervalS = 10

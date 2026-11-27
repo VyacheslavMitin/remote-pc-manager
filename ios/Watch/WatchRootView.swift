@@ -1,25 +1,41 @@
 import SwiftUI
+import WatchKit
 
-/// Главный экран часов: только статусы (ПК, LM Studio, Strata) — кнопок действий
-/// нет. Внизу — цель проверок (IP:порт, целиком, с уменьшением шрифта) и время
-/// последней проверки + кнопка ручного обновления.
+/// Главный экран часов: сверху статусы одной строкой (точки ПК/LMS/Str), под
+/// ними — 6 кнопок в 3 ряда (монохромные эмодзи на цветном фоне, как в
+/// веб-клиенте):
+///   ряд 1 (ПК):    пробудить (⏻, синий) / гибернация (☾, нейтральная)
+///   ряд 2 (LMS):   запустить (▶, зелёный) / остановить (⏹, красный)
+///   ряд 3 (Str):   запустить (▶, зелёный) / остановить (⏹, красный)
+/// Внизу — цель проверок и время последней проверки; сейчас скрыты
+/// (showFooterInfo = false) — код вывода сохранён.
 /// При «ПК не в сети» часы сами различают причины: NAS отвечает → молчит ПК;
 /// NAS молчит → LAN заблокирован: на watchOS нет своей локальной сети-privacy
-/// (TN3179), приconnected iPhone трафик проксируется через iPhone и разрешение
+/// (TN3179), при connected iPhone трафик проксируется через iPhone и разрешение
 /// выдаётся на iPhone (Параметры → Конфиденциальность → Локальная сеть).
 struct WatchRootView: View {
     @ObservedObject var model: WatchModel
+    /// Нижняя информационная строка (цель проверок, время, ручное обновление)
+    /// пока не выводится; код блоков сохранён.
+    private let showFooterInfo = false
+    /// Отправка команды идёт одна за раз — на время кнопки неактивны.
+    @State private var busyCommand: String? = nil
 
     var body: some View {
-        VStack(spacing: 8) {
-            statusBlock
-            Spacer(minLength: 0)
-            lanHintBlock
-            targetBlock
-            checkBlock
+        ScrollView {
+            VStack(spacing: 6) {
+                statusBlock
+                buttonsBlock
+                if showFooterInfo {
+                    lanHintBlock
+                    targetBlock
+                    checkBlock
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.bottom, 8)
         }
-        .padding(8)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Theme.bg)
         .task {
             model.startAutoCheck()
@@ -31,12 +47,72 @@ struct WatchRootView: View {
 
     // MARK: - Блоки
 
+    /// Статусы одной компактной строкой (точка + короткая подпись) — экономия
+    /// по вертикали: цвет точки = работает / не в сети / не проверено.
     private var statusBlock: some View {
-        VStack(spacing: 5) {
-            statusRow("ПК", model.pcUp)
-            statusRow("LM Studio", model.lmUp)
-            statusRow("Strata", model.strataUp)
+        HStack(spacing: 6) {
+            statusChip("ПК", model.pcUp)
+            statusChip("LMS", model.lmUp)
+            statusChip("Str", model.strataUp)
         }
+    }
+
+    /// 6 кнопок, 3 ряда по 2, слева подпись ряда. Эмодзи с \u{FE0E} —
+    /// текстовое (монохромное) начертание, иначе watchOS рисует цветные emoji.
+    /// Цвета — как в веб/десктоп-клиентах: пробуждение ПК — accent
+    /// (btn-primary), запуск LMS/Str — success (btn-success, ▶), остановка —
+    /// danger (btn-danger, ⏹), гибернация — нейтральная.
+    private var buttonsBlock: some View {
+        VStack(spacing: 3) {
+            buttonRow("ПК",
+                      on: ("⏻\u{FE0E}", Theme.accent, { await model.wakePC() }),
+                      off: ("\u{263E}", Theme.buttonBG, { await model.sendCommand("hibernate") }))
+            buttonRow("LMS",
+                      on: ("\u{25B6}\u{FE0E}", Theme.success, { await model.sendCommand("start_lmstudio") }),
+                      off: ("\u{23F9}\u{FE0E}", Theme.danger, { await model.sendCommand("stop_lmstudio") }))
+            buttonRow("Str",
+                      on: ("\u{25B6}\u{FE0E}", Theme.success, { await model.sendCommand("start_strata") }),
+                      off: ("\u{23F9}\u{FE0E}", Theme.danger, { await model.sendCommand("stop_strata") }))
+        }
+    }
+
+    /// Ряд кнопок: короткая подпись слева + две компактные кнопки.
+    private func buttonRow(_ label: String,
+                           on: (String, Color, () async -> Bool),
+                           off: (String, Color, () async -> Bool)) -> some View {
+        HStack(spacing: 3) {
+            Text(label)
+                .font(.system(size: 9, weight: .medium))
+                .foregroundColor(Theme.muted)
+                .frame(width: 22, alignment: .leading)
+            cmdButton(on.0, tint: on.1, on.2)
+            cmdButton(off.0, tint: off.1, off.2)
+        }
+    }
+
+    /// Кнопка команды: эмодзи на цветном фоне (как btn-primary/success/danger
+    /// в веб-клиенте); вибрация об успехе/неудаче и немедленное обновление
+    /// статусов (после пробуждения ПК «загорится» на следующем автоцикле).
+    private func cmdButton(_ symbol: String, tint: Color,
+                           _ action: @escaping () async -> Bool) -> some View {
+        Button {
+            guard busyCommand == nil else { return }
+            busyCommand = symbol
+            Task {
+                let ok = await action()
+                WKInterfaceDevice.current().play(ok ? .success : .failure)
+                busyCommand = nil
+                await model.refresh()
+            }
+        } label: {
+            Text(symbol)
+                .font(.system(size: 13))
+                .frame(maxWidth: .infinity, minHeight: 16)
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(tint)
+        .controlSize(.mini)
+        .disabled(busyCommand != nil)
     }
 
     @ViewBuilder
@@ -95,26 +171,20 @@ struct WatchRootView: View {
         return f
     }()
 
-    private func statusRow(_ title: String, _ value: Bool?) -> some View {
+    private func statusChip(_ title: String, _ value: Bool?) -> some View {
         let dot: Color
-        let label: String
-        let labelColor: Color
         switch value {
-        case nil: dot = .gray; label = "…"; labelColor = Theme.muted
-        case true: dot = .green; label = "работает"; labelColor = .green
-        case false: dot = .red; label = "не в сети"; labelColor = .red
+        case nil: dot = .gray
+        case true: dot = .green
+        case false: dot = .red
         }
-        return HStack(spacing: 5) {
+        return HStack(spacing: 3) {
             Circle()
                 .fill(dot)
-                .frame(width: 7, height: 7)
+                .frame(width: 6, height: 6)
             Text(title)
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: 10, weight: .medium))
                 .foregroundColor(Theme.text)
-            Spacer(minLength: 2)
-            Text(label)
-                .font(.system(size: 11))
-                .foregroundColor(labelColor)
         }
     }
 }
