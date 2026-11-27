@@ -1,76 +1,72 @@
 import SwiftUI
 
-/// Главный экран часов: статус ПК и LM Studio + 4 действия (2×2):
-/// Пробудить · Гибернация · Вкл LM · Выкл LM.
-/// Автопроверка статуса по интервалу + кнопка ручного пинга.
+/// Главный экран часов: только статусы (ПК, LM Studio, Strata) — кнопок действий
+/// нет. Внизу — цель проверок (IP:порт, целиком, с уменьшением шрифта) и время
+/// последней проверки + кнопка ручного обновления.
+/// При «ПК не в сети» часы сами различают причины: NAS отвечает → молчит ПК;
+/// NAS молчит → LAN заблокирован: на watchOS нет своей локальной сети-privacy
+/// (TN3179), приconnected iPhone трафик проксируется через iPhone и разрешение
+/// выдаётся на iPhone (Параметры → Конфиденциальность → Локальная сеть).
 struct WatchRootView: View {
     @ObservedObject var model: WatchModel
-    @State private var showSettings = false
 
     var body: some View {
-        VStack(spacing: 7) {
+        VStack(spacing: 8) {
             statusBlock
-            actionsBlock
-            messageBlock
+            Spacer(minLength: 0)
+            lanHintBlock
+            targetBlock
             checkBlock
-            unsyncBlock
         }
         .padding(8)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .overlay(alignment: .topTrailing) {
-            Button { showSettings = true } label: {
-                Image(systemName: "gearshape.fill")
-                    .font(.system(size: 13))
-                    .foregroundColor(Theme.muted)
-                    .padding(6)
-            }
-            .buttonStyle(.plain)
-        }
         .background(Theme.bg)
-        .sheet(isPresented: $showSettings) {
-            WatchSettingsView(model: model)
-        }
         .task {
-            model.startAutoCheck()   // автопроверка по интервалу (refresh внутри цикла)
+            model.startAutoCheck()
         }
         .onDisappear {
             model.stopAutoCheck()
         }
     }
 
-    // MARK: - Блоки (разбиты для typechecker Swift 6)
+    // MARK: - Блоки
 
     private var statusBlock: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 5) {
             statusRow("ПК", model.pcUp)
-            statusRow("LM Studio", model.lmRunning)
-        }
-    }
-
-    private var actionsBlock: some View {
-        VStack(spacing: 6) {
-            HStack(spacing: 6) {
-                action("power", "Пробудить", color: .green) { Task { await model.wol() } }
-                action("moon.zzz.fill", "Гибри", color: .orange) { Task { await model.hibernate() } }
-            }
-            HStack(spacing: 6) {
-                action("play.circle.fill", "Вкл LM", color: .cyan) { Task { await model.startLM() } }
-                action("stop.circle.fill", "Выкл LM", color: .pink) { Task { await model.stopLM() } }
-            }
+            statusRow("LM Studio", model.lmUp)
+            statusRow("Strata", model.strataUp)
         }
     }
 
     @ViewBuilder
-    private var messageBlock: some View {
-        if !model.message.isEmpty {
-            Text(model.message)
-                .font(.system(size: 10))
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
-                .minimumScaleFactor(0.7)
-                .frame(maxWidth: .infinity)
-                .foregroundColor(Theme.muted)
+    private var lanHintBlock: some View {
+        if model.pcUp == false {
+            if model.lanOK == true {
+                Text("Часы видят NAS — не отвечает ПК (\(WatchConfig.pcHost):\(WatchConfig.pcPort)). Проверь: ПК включён, сервер запущен, брандмауэр не блокирует порт.")
+                    .font(.system(size: 9))
+                    .foregroundColor(Theme.muted)
+                    .lineLimit(4)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else if model.lanOK == false {
+                Text("Часы не видят локальную сеть: на iPhone — Параметры → Конфиденциальность и безопасность → Локальная сеть → разреши «Удалённый ПК» (трафик часов идёт через iPhone); часы и ПК — в одном Wi-Fi.")
+                    .font(.system(size: 9))
+                    .foregroundColor(Theme.danger)
+                    .lineLimit(4)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
+    }
+
+    /// Цель проверок — одной строкой на всю ширину: IP:порт помещается целиком
+    /// (шрифт уменьшается, если не влезает, — порт не обрезается).
+    private var targetBlock: some View {
+        Text("\(WatchConfig.pcHost):\(WatchConfig.pcPort) · LM :\(WatchConfig.lmPort) · Strata :\(WatchConfig.strataPort)")
+            .font(.system(size: 10))
+            .foregroundColor(Theme.muted)
+            .lineLimit(1)
+            .minimumScaleFactor(0.55)
+            .frame(maxWidth: .infinity, alignment: .center)
     }
 
     private var checkBlock: some View {
@@ -78,26 +74,16 @@ struct WatchRootView: View {
             Text(model.lastCheck.map { "обновлено " + Self.timeFmt.string(from: $0) } ?? "ещё не проверено")
                 .font(.system(size: 9))
                 .foregroundColor(Theme.muted)
-            Spacer(minLength: 2)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
             Button {
                 Task { await model.refresh() }
             } label: {
                 Image(systemName: "arrow.triangle.2.circlepath")
-                    .font(.system(size: 11))
+                    .font(.system(size: 12))
                     .foregroundColor(Theme.muted)
             }
             .buttonStyle(.plain)
-        }
-    }
-
-    @ViewBuilder
-    private var unsyncBlock: some View {
-        if model.looksUnsynced {
-            Text("⚠️ Настройки пока дефолтные. С iPhone: Настройки → «Отправить на Apple Watch», затем закройте приложение на часах и откройте заново.")
-                .font(.system(size: 9))
-                .foregroundColor(Theme.danger)
-                .lineLimit(4)
-                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -130,24 +116,5 @@ struct WatchRootView: View {
                 .font(.system(size: 11))
                 .foregroundColor(labelColor)
         }
-    }
-
-    private func action(_ icon: String, _ label: String, color: Color,
-                        action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 2) {
-                Image(systemName: icon)
-                    .font(.system(size: 13))
-                    .foregroundColor(color)
-                Text(label)
-                    .font(.system(size: 9))
-                    .foregroundColor(Theme.text)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.6)
-            }
-            .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.bordered)
-        .disabled(model.busy)
     }
 }
