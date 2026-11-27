@@ -278,7 +278,7 @@ class MainWindow(QMainWindow):
         self.btn_wol.setToolTip("Отправить magic packet (Wake-on-LAN)")
         self.btn_wol.clicked.connect(self.on_wol)
         power.addWidget(self.btn_wol, 3)
-        self.btn_hib = QPushButton("🌙  Гибернация")
+        self.btn_hib = QPushButton("☾  Гибернация")
         self.btn_hib.clicked.connect(self.on_hibernate)
         power.addWidget(self.btn_hib, 2)
         pc.addLayout(power)
@@ -898,7 +898,7 @@ class MainWindow(QMainWindow):
         def _ok(res):
             self.row_pc.set_state(False, "уходит в гибернацию")
             self._last["pc"] = False
-            self._msg("🌙 Гибернация запущена. Через секунду ПК погаснет.")
+            self._msg("☾ Гибернация запущена. Через секунду ПК погаснет.")
 
         def _fail(msg):
             self._msg(f"❌ Гибернация не выполнена: {msg}")

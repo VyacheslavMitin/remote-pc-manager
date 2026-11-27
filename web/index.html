@@ -273,7 +273,7 @@ input::selection { background: var(--accent); color: #fff; }
     </div>
     <div class="row">
       <button class="btn-primary grow3" id="btnWol" data-tip="Отправить magic packet (Wake-on-LAN)">⏻&nbsp; Пробудить ПК</button>
-      <button class="grow2" id="btnHib">🌙&nbsp; Гибернация</button>
+      <button class="grow2" id="btnHib">☾&nbsp; Гибернация</button>
     </div>
   </div>
 
@@ -717,7 +717,7 @@ async function onHibernate() {
     setDot($("dotPC"), false, "уходит в гибернацию");
     $("statePC").textContent = "не в сети";
     last.pc = false;
-    msg("🌙 Гибернация запущена. Через секунду ПК погаснет.");
+    msg("☾ Гибернация запущена. Через секунду ПК погаснет.");
   } catch (e) {
     msg(`❌ Гибернация не выполнена: ${e.message}`);
   }

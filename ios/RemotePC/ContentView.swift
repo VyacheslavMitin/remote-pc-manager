@@ -20,7 +20,6 @@ struct ContentView: View {
                         pcSection
                         lmSection
                         stSection
-                        eventsSection
                     }
                     .padding(.horizontal, 14)
                     .padding(.top, 4)
@@ -89,7 +88,7 @@ struct ContentView: View {
                              color: Theme.accent, disabled: model.busy) {
                     Task { await model.wol() }
                 }
-                ActionButton(text: "Гибернация", icon: "moon.zzz.fill",
+                ActionButton(text: "Гибернация", icon: "☾",
                              color: Theme.buttonBG, border: Theme.border, fg: Theme.text,
                              disabled: model.busy) {
                     Task { await model.hibernate() }
@@ -176,49 +175,6 @@ struct ContentView: View {
         )
     }
 
-    // MARK: лента событий (статус-уведомления: команды и смены статусов)
-
-    private static let eventTimeFmt: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "HH:mm:ss"
-        return f
-    }()
-
-    private var eventsSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Лента событий")
-                .font(.system(size: 15, weight: .bold))
-                .foregroundColor(Theme.title)
-            if model.events.isEmpty {
-                Text("Пока пусто.")
-                    .font(.system(size: 12))
-                    .foregroundColor(Theme.muted)
-            } else {
-                // последние сверху
-                ForEach(model.events.suffix(8).reversed()) { ev in
-                    HStack(spacing: 6) {
-                        Text(Self.eventTimeFmt.string(from: ev.time))
-                            .font(.system(size: 11).monospacedDigit())
-                            .foregroundColor(Theme.muted)
-                        Text(ev.ok == nil ? "•" : (ev.ok == true ? "✅" : "❌"))
-                            .font(.system(size: 11))
-                        Text(ev.text)
-                            .font(.system(size: 12))
-                            .foregroundColor(Theme.text)
-                            .lineLimit(1)
-                    }
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Theme.blockBG)
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.blockBorder))
-        )
-    }
-
     // MARK: - низ
 
     private var bottomBar: some View {
@@ -273,6 +229,7 @@ struct StatusRow: View {
 
 /// Цветная кнопка действия (как #primary/#success/#danger в theme.py).
 /// border/fg заданы — нейтральная кнопка (как обычная на веб/десктопе).
+/// icon — SF Symbol; не-ASCII строка рендерится как текст (например «☾»).
 struct ActionButton: View {
     let text: String
     var icon: String? = nil
@@ -285,7 +242,13 @@ struct ActionButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 6) {
-                if let icon { Image(systemName: icon).font(.system(size: 13)) }
+                if let icon {
+                    if icon.allSatisfy(\.isASCII) {
+                        Image(systemName: icon).font(.system(size: 13))
+                    } else {
+                        Text(icon).font(.system(size: 14))
+                    }
+                }
                 Text(text)
             }
             .font(.system(size: 14, weight: .semibold))
