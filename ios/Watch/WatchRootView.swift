@@ -28,6 +28,9 @@ struct WatchRootView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 6) {
+                Text("Удалённый ПК")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(Theme.text)
                 statusBlock
                 buttonsBlock
                 eventsBlock
@@ -243,7 +246,7 @@ struct WatchRootView: View {
                 .fill(dot)
                 .frame(width: 6, height: 6)
             Text(title)
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: 12, weight: .medium))
                 .foregroundColor(Theme.text)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
