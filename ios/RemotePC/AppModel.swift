@@ -1,7 +1,8 @@
 import SwiftUI
 import Foundation
 
-/// Логика главного экрана: проверки, WoL, гибернация, LM Studio, автопроверка.
+/// Логика главного экрана: проверки, WoL, гибернация, LM Studio, Strata,
+/// автопроверка, лента событий.
 /// Порт client/app.py (MainWindow) + client/worker.py (фоновые операции).
 @MainActor
 final class AppModel: ObservableObject {
@@ -9,13 +10,33 @@ final class AppModel: ObservableObject {
     @Published var pcState: Bool?            // nil = не проверено
     @Published var lmState: Bool?
     @Published var lmModelLoaded = false     // LM Studio запущена И модель загружена
+    @Published var stState: Bool?            // Strata (как lmState)
+    @Published var stModelLoaded = false     // Strata запущена И модель загружена
     @Published var pcTitle = "ПК"
     @Published var lmTitle = "LM Studio"
+    @Published var stTitle = "Strata"
     @Published var statusLine = "Готов."
     @Published var autoLine = "Автопроверка: выключена"
     @Published var pcChecking = false
     @Published var lmChecking = false
+    @Published var stChecking = false
     @Published var busy = false
+
+    /// Лента событий (команды и смены статусов), newest last; как «уведомления
+    /// о статусе» — выводится внизу экрана.
+    struct AppEvent: Identifiable {
+        let id = UUID()
+        let time: Date
+        let text: String
+        /// nil = информационное, true = успешно, false = ошибка
+        let ok: Bool?
+    }
+    @Published var events: [AppEvent] = []
+
+    private func log(_ text: String, ok: Bool? = nil) {
+        events.append(AppEvent(time: Date(), text: text, ok: ok))
+        if events.count > 50 { events.removeFirst(events.count - 50) }
+    }
 
     let cfg: ConfigStore
     private var autoTask: Task<Void, Never>?
@@ -42,8 +63,10 @@ final class AppModel: ObservableObject {
         let start = Date()
         let up = await NetCheck.hostIsUp(host: ip, port: cfg.serverPort)
         await minVisible(start: start)
+        let old = pcState
         pcState = up
         pcChecking = false
+        if let old, old != up { log("ПК " + (up ? "в сети" : "не в сети"), ok: up) }
     }
 
     func checkLM() async {
@@ -54,12 +77,28 @@ final class AppModel: ObservableObject {
             applyStatus(res)
         } catch {
             lmState = false
+            stState = false
         }
         await minVisible(start: start)
         lmChecking = false
     }
 
-    /// Автопроверка: ПК + LM одновременно (как _auto_tick в app.py).
+    /// Проверка Strata — тот же status-запрос (сервер отдаёт strata_* поля).
+    func checkST() async {
+        stChecking = true
+        let start = Date()
+        do {
+            let res = try await api.command("status", timeout: 6)
+            applyStatus(res)
+        } catch {
+            lmState = false
+            stState = false
+        }
+        await minVisible(start: start)
+        stChecking = false
+    }
+
+    /// Автопроверка: ПК + LM/Strata одновременно (как _auto_tick в app.py).
     func checkAll() async {
         async let pc: Void = checkPC()
         async let lm: Void = checkLM()
@@ -85,24 +124,44 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func manualCheckST() async {
+        await checkST()
+        if stState == false {
+            statusLine = "Strata: недоступна."
+        } else if stModelLoaded {
+            statusLine = "Strata работает, модель загружена."
+        } else {
+            statusLine = "Strata работает."
+        }
+    }
+
+    /// Сводка: что активно (как нижняя строка в app.py: «активна LM Studio»,
+    /// «активна Strata», «активны обе: LM Studio и Strata»).
     private func statusSummary() -> String {
         if pcState == false { return "ПК не отвечает." }
-        if lmState == false { return "LM Studio не отвечает." }
-        if lmState == true {
-            return lmModelLoaded
-                ? "ПК в сети, LM Studio работает, модель загружена."
-                : "ПК в сети, LM Studio работает."
+        var parts: [String] = []
+        if lmState == true { parts.append("LM Studio") }
+        if stState == true { parts.append("Strata") }
+        switch parts.count {
+        case 0: return "ПК в сети."
+        case 1: return "ПК в сети, активна \(parts[0])."
+        default: return "ПК в сети, активны обе: LM Studio и Strata."
         }
-        return "ПК в сети."
     }
 
     /// Заголовки секций из ответа status (порты _set_pc_title / _set_lm_title).
     private func applyStatus(_ res: [String: Any]) {
         // LM-проверка не меняет точку ПК (как в десктопе) — только заголовки + состояние LM.
+        let oldLM = lmState
         lmState = (res["lmstudio_running"] as? Bool) ?? false
         let loadedModel = (res["lmstudio_model"] as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
         // «модель загружена» = известен контекст (state==«loaded»); /v1/models отдаёт каталог даже без загрузки
         lmModelLoaded = (lmState == true) && ((res["lmstudio_context"] as? Int) ?? 0) > 0
+        if let oldLM, oldLM != (lmState == true) {
+            log("LM Studio " + (lmState == true ? "запущена" : "остановлена"), ok: lmState == true)
+        }
+        if lmModelLoaded && !lmWasLoaded { log("LM Studio: модель загружена", ok: true) }
+        lmWasLoaded = lmModelLoaded
 
         // ПК
         let name = (res["pc_name"] as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
@@ -128,7 +187,38 @@ final class AppModel: ObservableObject {
         } else {
             lmTitle = "LM Studio"
         }
+
+        // Strata: strata_running / strata_version / strata_model /
+        // strata_context / strata_loaded / strata_vram_mb (старый сервер —
+        // полей нет, блок не падает; как setStTitle в web/index.html)
+        if let stRunning = res["strata_running"] as? Bool {
+            let oldST = stState
+            stState = stRunning
+            stModelLoaded = stRunning && ((res["strata_loaded"] as? Bool) ?? false)
+            if let oldST, oldST != stRunning {
+                log("Strata " + (stRunning ? "запущена" : "остановлена"), ok: stRunning)
+            }
+            if stModelLoaded && !stWasLoaded { log("Strata: модель загружена", ok: true) }
+            stWasLoaded = stModelLoaded
+            let stVer = (res["strata_version"] as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
+            let stModel = (res["strata_model"] as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
+            let stCtx = Format.context(res["strata_context"] as? Int)
+            let stVram = Format.gb(res["strata_vram_mb"] as? Int)
+            if stRunning {
+                var parts: [String] = []
+                if !stVer.isEmpty { parts.append(stVer) }
+                if !stModel.isEmpty { parts.append(stModel) }
+                if !stCtx.isEmpty { parts.append(stCtx) }
+                if !stVram.isEmpty { parts.append(stVram) }
+                stTitle = parts.isEmpty ? "Strata" : "Strata (\(parts.joined(separator: ", ")))"
+            } else {
+                stTitle = "Strata"
+            }
+        }
     }
+
+    private var lmWasLoaded = false
+    private var stWasLoaded = false
 
     // MARK: - действия
 
@@ -151,12 +241,15 @@ final class AppModel: ObservableObject {
                                                                token: cfg.wolRelayToken,
                                                                mac: mac)
                 statusLine = "✅ WoL (relay): ×\(sent) → MAC \(rmac)"
+                log("Wake-on-LAN (relay)", ok: true)
             } catch {
                 do {
                     let (sent, _, _) = try WoL.send(macRaw: mac, unicastIP: cfg.pcIP)
                     statusLine = "⚠️ WoL: relay недоступен — ×\(sent), может не будить"
+                    log("Wake-on-LAN (relay недоступен, напрямую)", ok: false)
                 } catch {
                     statusLine = "❌ WoL: \(error.localizedDescription)"
+                    log("Wake-on-LAN", ok: false)
                 }
             }
             return
@@ -165,8 +258,10 @@ final class AppModel: ObservableObject {
         do {
             let (sent, _, dmac) = try WoL.send(macRaw: mac, unicastIP: cfg.pcIP)
             statusLine = "✅ WoL (напрямую): ×\(sent) → MAC \(dmac)"
+            log("Wake-on-LAN (напрямую)", ok: true)
         } catch {
             statusLine = "❌ WoL: \(error.localizedDescription)"
+            log("Wake-on-LAN", ok: false)
         }
     }
 
@@ -178,8 +273,10 @@ final class AppModel: ObservableObject {
             _ = try await api.command("hibernate", timeout: 6)
             pcState = false
             statusLine = "Гибернация запущена — ПК погаснет через несколько секунд."
+            log("Гибернация", ok: true)
         } catch {
             statusLine = "Гибернация: \(error.localizedDescription)"
+            log("Гибернация", ok: false)
         }
     }
 
@@ -190,10 +287,12 @@ final class AppModel: ObservableObject {
         do {
             _ = try await api.command("start_lmstudio", timeout: 10)
             statusLine = "LM Studio запущена."
+            log("Запуск LM Studio", ok: true)
             try? await Task.sleep(for: .seconds(2))   // дать запуститься, как в _on_start
             await checkLM()
         } catch {
             statusLine = "Старт LM Studio: \(error.localizedDescription)"
+            log("Запуск LM Studio", ok: false)
         }
     }
 
@@ -205,10 +304,45 @@ final class AppModel: ObservableObject {
             _ = try await api.command("stop_lmstudio", timeout: 10)
             lmState = false
             statusLine = "LM Studio остановлена."
+            log("Остановка LM Studio", ok: true)
             try? await Task.sleep(for: .seconds(2))   // как в _on_stop
             await checkLM()
         } catch {
             statusLine = "Стоп LM Studio: \(error.localizedDescription)"
+            log("Остановка LM Studio", ok: false)
+        }
+    }
+
+    func startST() async {
+        guard !busy else { return }
+        busy = true
+        defer { busy = false }
+        do {
+            _ = try await api.command("start_strata", timeout: 10)
+            statusLine = "Strata запущена."
+            log("Запуск Strata", ok: true)
+            try? await Task.sleep(for: .seconds(2))
+            await checkST()
+        } catch {
+            statusLine = "Старт Strata: \(error.localizedDescription)"
+            log("Запуск Strata", ok: false)
+        }
+    }
+
+    func stopST() async {
+        guard !busy else { return }
+        busy = true
+        defer { busy = false }
+        do {
+            _ = try await api.command("stop_strata", timeout: 10)
+            stState = false
+            statusLine = "Strata остановлена."
+            log("Остановка Strata", ok: true)
+            try? await Task.sleep(for: .seconds(2))
+            await checkST()
+        } catch {
+            statusLine = "Стоп Strata: \(error.localizedDescription)"
+            log("Остановка Strata", ok: false)
         }
     }
 

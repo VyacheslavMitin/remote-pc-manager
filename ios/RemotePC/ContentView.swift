@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Главный экран: секции ПК / LM Studio + нижняя строка статуса.
-/// Порт MainWindow из client/app.py (тёмная тема из client/theme.py).
+/// Главный экран: секции ПК / LM Studio / Strata + лента событий + нижняя
+/// строка статуса. Порт MainWindow из client/app.py (тёмная тема из client/theme.py).
 struct ContentView: View {
     @StateObject private var model: AppModel
     @Environment(\.scenePhase) private var scenePhase
@@ -19,6 +19,8 @@ struct ContentView: View {
                     VStack(spacing: 14) {
                         pcSection
                         lmSection
+                        stSection
+                        eventsSection
                     }
                     .padding(.horizontal, 14)
                     .padding(.top, 4)
@@ -129,6 +131,86 @@ struct ContentView: View {
                 }
             }
         }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Theme.blockBG)
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.blockBorder))
+        )
+    }
+
+    // MARK: Strata (порт блока «Strata» из app.py / web)
+
+    private var stSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(model.stTitle)
+                .font(.system(size: 15, weight: .bold))
+                .foregroundColor(Theme.title)
+                .lineLimit(2)
+
+            StatusRow(
+                dot: Theme.dot(model.stState),
+                text: model.stState == nil ? "—" : (model.stState == true ? "работает" : "не запущена"),
+                checking: model.stChecking,
+                buttonTitle: model.stChecking ? "Проверка…" : "Проверить",
+                disabled: model.busy,
+                action: { Task { await model.manualCheckST() } }
+            )
+
+            VStack(spacing: 10) {
+                ActionButton(text: "Включить", icon: "play.fill",
+                             color: Theme.success, disabled: model.busy) {
+                    Task { await model.startST() }
+                }
+                ActionButton(text: "Выключить", icon: "stop.fill",
+                             color: Theme.danger, disabled: model.busy) {
+                    Task { await model.stopST() }
+                }
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Theme.blockBG)
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.blockBorder))
+        )
+    }
+
+    // MARK: лента событий (статус-уведомления: команды и смены статусов)
+
+    private static let eventTimeFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm:ss"
+        return f
+    }()
+
+    private var eventsSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Лента событий")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundColor(Theme.title)
+            if model.events.isEmpty {
+                Text("Пока пусто.")
+                    .font(.system(size: 12))
+                    .foregroundColor(Theme.muted)
+            } else {
+                // последние сверху
+                ForEach(model.events.suffix(8).reversed()) { ev in
+                    HStack(spacing: 6) {
+                        Text(Self.eventTimeFmt.string(from: ev.time))
+                            .font(.system(size: 11).monospacedDigit())
+                            .foregroundColor(Theme.muted)
+                        Text(ev.ok == nil ? "•" : (ev.ok == true ? "✅" : "❌"))
+                            .font(.system(size: 11))
+                        Text(ev.text)
+                            .font(.system(size: 12))
+                            .foregroundColor(Theme.text)
+                            .lineLimit(1)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
         .background(
             RoundedRectangle(cornerRadius: 12)
